@@ -1,0 +1,28 @@
+# --- secrets / deploy values — never commit ---
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform/
+backend.hcl
+.env
+.env.*
+
+# --- python ---
+__pycache__/
+*.py[cod]
+.venv/
+.uv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+coverage.xml
+.coverage
+
+# --- misc ---
+.DS_Store
+*.zip
+node_modules/
