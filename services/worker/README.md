@@ -2,7 +2,7 @@
 
 Containerized SQS consumer deployed to EKS. Built in Phase 4.
 
-Polls the jobs queue, calls Bedrock (Claude) via `docpipe-core`, writes the
+Polls the jobs queue, calls Bedrock (DeepSeek) via `docpipe-core`, writes the
 summary to DynamoDB and job history to Aurora. FastAPI serves `/healthz` for
 k8s probes. AWS permissions come from IRSA (no static credentials in-cluster).
 

@@ -1,4 +1,4 @@
 # Copy to terraform.tfvars (gitignored) and adjust.
-region           = "eu-central-1"
-bedrock_model_id = "anthropic.claude-sonnet-4-5"
+region           = "us-east-1"
+bedrock_model_id = "us.deepseek.r1-v1:0"
 # alert_email    = "you@example.com"

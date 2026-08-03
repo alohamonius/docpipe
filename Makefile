@@ -1,4 +1,4 @@
-.PHONY: sync fmt lint test infra-init infra-up infra-down
+.PHONY: sync fmt lint typecheck test infra-init infra-up infra-down
 
 sync:
 	uv sync --all-packages
@@ -10,6 +10,9 @@ fmt:
 lint:
 	uv run ruff check packages services
 	terraform fmt -check -recursive infra
+
+typecheck:
+	uv run mypy packages/core/src
 
 test:
 	uv run pytest

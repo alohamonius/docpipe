@@ -10,17 +10,20 @@ Phased so every phase leaves the repo in a working, demonstrable state.
 - [x] .gitignore covering tfstate / tfvars / .env / caches
 - [x] Makefile with fmt / lint / test / infra targets
 
-## Phase 1 — Shared package (`docpipe-core`)
+## Phase 1 — Shared package (`docpipe-core`) ✅
 
 The heart of the demo: one library reused by Lambda and the EKS worker.
+Model: **DeepSeek-R1 on Bedrock** (`us.deepseek.r1-v1:0`) via the
+model-agnostic Converse API — swappable by config, no vendor SDK.
 
-- [ ] `models.py` — Pydantic: `Job`, `JobStatus`, `SummaryRequest`, `SummaryResult`
-- [ ] `storage.py` — S3 (put/get document) + DynamoDB (job CRUD) wrappers
-- [ ] `queue.py` — SQS publish/consume with visibility-timeout handling
-- [ ] `llm.py` — Bedrock client: invoke Claude, retries/backoff, token usage capture
-- [ ] `observability.py` — structured JSON logging + CloudWatch EMF metrics
-- [ ] Unit tests with moto (S3/DynamoDB/SQS mocked); Bedrock behind an interface
-- [ ] CI: GitHub Actions — ruff, pytest, mypy
+- [x] `models.py` — Pydantic: `Job`, `JobStatus`, `SummaryResult`
+- [x] `storage.py` — S3 (put/get document) + DynamoDB (job CRUD) wrappers
+- [x] `queue.py` — SQS publish/consume
+- [x] `llm.py` — Bedrock Converse client: DeepSeek, retries/backoff,
+      `<think>` scratchpad stripping, token usage capture
+- [x] `observability.py` — structured JSON logging + CloudWatch EMF metrics
+- [x] Unit tests with moto (S3/DynamoDB/SQS mocked); Bedrock behind a fake client
+- [x] CI: GitHub Actions — ruff, mypy, pytest, terraform fmt
 
 ## Phase 2 — Terraform foundation
 

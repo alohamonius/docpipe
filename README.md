@@ -15,7 +15,7 @@ POST /summarize (document)                         GET /jobs/{id}
                       │                                  ▲
                       ▼                                  │
                      SQS ──▶ EKS worker ──▶ Bedrock ─────┤
-                      │         (FastAPI       (Claude)  │
+                      │         (FastAPI       (DeepSeek)  │
                       ▼          consumer)               │
                      DLQ                    Aurora ◀─────┘
                                         (job history)
@@ -24,7 +24,7 @@ POST /summarize (document)                         GET /jobs/{id}
 1. Client `POST`s a document. The **Lambda** API handler stores it in **S3**,
    creates a job record in **DynamoDB**, and enqueues a message on **SQS**.
 2. A long-running consumer on **EKS** picks up the message, calls **Bedrock**
-   (Claude) to summarize, writes the result to DynamoDB and relational history
+   (DeepSeek) to summarize, writes the result to DynamoDB and relational history
    to **Aurora**.
 3. Client polls `GET /jobs/{id}` for status/result.
 4. Failures retry via SQS; poison messages land in a **DLQ** with a
