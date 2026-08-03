@@ -1,35 +1,7 @@
-from typing import Any
-
 import pytest
 from botocore.exceptions import ClientError
-from docpipe_core.llm import SummarizationError, SummarizerClient
-
-
-def converse_response(text: str) -> dict[str, Any]:
-    return {
-        "output": {"message": {"role": "assistant", "content": [{"text": text}]}},
-        "usage": {"inputTokens": 120, "outputTokens": 30, "totalTokens": 150},
-        "stopReason": "end_turn",
-    }
-
-
-class FakeBedrock:
-    def __init__(self, responses: list[Any]) -> None:
-        self.responses = responses
-        self.calls: list[dict[str, Any]] = []
-
-    def converse(self, **kwargs: Any) -> dict[str, Any]:
-        self.calls.append(kwargs)
-        result = self.responses.pop(0)
-        if isinstance(result, Exception):
-            raise result
-        return result  # type: ignore[no-any-return]
-
-
-def throttle() -> ClientError:
-    return ClientError(
-        {"Error": {"Code": "ThrottlingException", "Message": "slow down"}}, "Converse"
-    )
+from docpipe_core.llm import ModelInvocationError, SummarizerClient
+from helpers import FakeBedrock, converse_response, throttle
 
 
 def test_summarize_happy_path() -> None:
@@ -67,7 +39,7 @@ def test_gives_up_after_max_retries() -> None:
     fake = FakeBedrock([throttle()] * 4)
     client = SummarizerClient(bedrock_client=fake, max_retries=3, sleep=lambda _: None)
 
-    with pytest.raises(SummarizationError, match="ThrottlingException"):
+    with pytest.raises(ModelInvocationError, match="ThrottlingException"):
         client.summarize("doc")
     assert len(fake.calls) == 4
 
@@ -77,6 +49,6 @@ def test_non_retryable_error_fails_immediately() -> None:
     fake = FakeBedrock([error])
     client = SummarizerClient(bedrock_client=fake, sleep=lambda _: None)
 
-    with pytest.raises(SummarizationError, match="ValidationException"):
+    with pytest.raises(ModelInvocationError, match="ValidationException"):
         client.summarize("doc")
     assert len(fake.calls) == 1

@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -26,6 +27,19 @@ def new_job_id() -> str:
 
 class SummaryResult(BaseModel):
     summary: str
+    model_id: str
+    input_tokens: int
+    output_tokens: int
+    latency_ms: int
+
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class ChatReply(BaseModel):
+    message: str
     model_id: str
     input_tokens: int
     output_tokens: int
