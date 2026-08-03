@@ -16,6 +16,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 from docpipe_core.models import ChatMessage, ChatReply, SummaryResult
+from docpipe_core.retrieval import RetrievedPassage
 
 DEFAULT_MODEL_ID = "us.deepseek.r1-v1:0"
 
@@ -42,6 +43,21 @@ HEALTH_ASSISTANT_SYSTEM = (
     "fever, or symptoms after trauma, tell them to see a clinician promptly "
     "instead of advising further. Keep answers concise and practical."
 )
+
+
+_GROUNDING_INSTRUCTIONS = (
+    "\n\nGround your answer in the knowledge-base excerpts below when they are "
+    "relevant, and name the source you relied on. If the excerpts do not cover "
+    "the question, say so plainly instead of inventing facts.\n"
+)
+
+
+def _grounded_system(system: str, passages: Sequence[RetrievedPassage]) -> str:
+    lines = [system, _GROUNDING_INSTRUCTIONS]
+    for i, passage in enumerate(passages, start=1):
+        source = f" (source: {passage.source})" if passage.source else ""
+        lines.append(f"[{i}]{source} {passage.text}")
+    return "\n".join(lines)
 
 
 class ModelInvocationError(Exception):
@@ -104,9 +120,12 @@ class ChatClient(_ConverseClient):
         self,
         history: Sequence[ChatMessage],
         system: str = HEALTH_ASSISTANT_SYSTEM,
+        passages: Sequence[RetrievedPassage] | None = None,
     ) -> ChatReply:
         if not history or history[-1].role != "user":
             raise ValueError("history must end with a user message")
+        if passages:
+            system = _grounded_system(system, passages)
         messages = [{"role": m.role, "content": [{"text": m.content}]} for m in history]
         started = time.monotonic()
         response = self._converse(messages, system=system)

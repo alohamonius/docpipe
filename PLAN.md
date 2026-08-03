@@ -6,6 +6,11 @@ Phased so every phase leaves the repo in a working, demonstrable state.
 summaries second — that also demonstrates the full stack (Bedrock, Lambda,
 EKS, DynamoDB, API Gateway, S3, Aurora, VPC, IAM, CloudWatch, SQS, Terraform).
 
+**Two product pillars:** everything is **per-user** (opaque IDs from the app,
+DynamoDB keyed `userId` + `conversationId`/`jobId`), and chat is **grounded in
+the health.studio knowledge base** (public, evidence-graded anatomy/exercise
+content) via Bedrock Knowledge Bases + S3 Vectors, with citations.
+
 ## Phase 0 — Init & setup ✅
 
 - [x] Repo skeleton: packages / services / infra layout
@@ -30,6 +35,10 @@ model-agnostic Converse API — swappable by config, no vendor SDK.
 - [x] CI: GitHub Actions — ruff, mypy, pytest, terraform fmt
 - [x] `chat.py`-level support: `ChatClient` (multi-turn Converse, non-diagnostic
       health system prompt), `ChatMessage`/`ChatReply` models
+- [x] `retrieval.py` — `KnowledgeBaseClient` (Bedrock KB retrieve API),
+      `RetrievedPassage`; `ChatClient` grounding: passages injected into the
+      system prompt with cite-or-say-so instructions
+- [x] User scoping in models: `user_id` on `Job` and `Conversation`
 
 ## Phase 2 — Terraform foundation
 
@@ -38,18 +47,24 @@ model-agnostic Converse API — swappable by config, no vendor SDK.
 - [ ] `iam` module: per-service roles, least-privilege policies (api-lambda:
       S3 put + DDB write + SQS send; worker: SQS consume + Bedrock invoke + DDB/RDS)
 - [ ] `data` module: S3 bucket (versioned, SSE), DynamoDB tables (`jobs` PK
-      jobId + TTL; `conversations` PK conversationId + TTL),
+      userId SK jobId + TTL; `conversations` PK userId SK conversationId + TTL),
       Aurora Serverless v2 (min ACU, private subnets)
+- [ ] `kb` module: KB source S3 bucket, Bedrock Knowledge Base (Titan
+      embeddings) backed by **S3 Vectors** (cheap, serverless — not OpenSearch)
 - [ ] `messaging` module: SQS queue + DLQ + redrive policy
 - [ ] Remote state: S3 backend with native lockfile; `backend.hcl` per env
 - [ ] `make infra-up` / `make infra-down` for the dev env
 
 ## Phase 3 — API service (Lambda + API Gateway) — chat ships here
 
-- [ ] `services/api`: handlers for `POST /chat` (sync Bedrock call, conversation
-      persistence in DynamoDB), `POST /summarize`, `GET /jobs/{id}` using core
-- [ ] `ConversationStore` in core (DynamoDB, TTL-expired history)
-- [ ] API-key auth on API Gateway (server-to-server; health.studio holds the key)
+- [ ] KB content sync: script exporting health.studio's public corpus
+      (docs/anatomy, evidence-graded articles) → S3 → KB ingestion job
+- [ ] `services/api`: handlers for `POST /chat` (retrieve from KB → grounded
+      DeepSeek call → cited reply, conversation persisted per user),
+      `POST /summarize`, `GET /jobs/{id}` using core
+- [ ] `ConversationStore` in core (DynamoDB, PK userId SK conversationId, TTL)
+- [ ] API-key auth on API Gateway (server-to-server; health.studio holds the
+      key) + opaque `userId` required on every route
 - [ ] Packaging: zip build via uv export → CI artifact
 - [ ] `api-lambda` module: HTTP API Gateway, routes, Lambda, log group, throttling
 - [ ] Smoke test script hitting the deployed endpoint

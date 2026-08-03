@@ -8,7 +8,8 @@ Terraform for docpipe. Reusable modules + one live environment (`envs/dev`).
 |--------------|-------------------------------------------------------------------|-------|
 | `network`    | VPC, subnets ×2 AZ, single NAT, S3/DynamoDB gateway endpoints     | 2     |
 | `iam`        | Per-service roles + least-privilege policies                      | 2     |
-| `data`       | S3 bucket, DynamoDB jobs table, Aurora Serverless v2              | 2     |
+| `data`       | S3 bucket, DynamoDB jobs+conversations tables, Aurora Serverless  | 2     |
+| `kb`         | KB source bucket, Bedrock Knowledge Base on S3 Vectors            | 2     |
 | `messaging`  | SQS queue + DLQ + redrive policy                                  | 2     |
 | `api-lambda` | HTTP API Gateway, Lambda, log group, throttling                   | 3     |
 | `eks`        | EKS cluster, managed node group, IRSA                             | 4     |

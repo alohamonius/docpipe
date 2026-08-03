@@ -48,6 +48,7 @@ class ChatReply(BaseModel):
 
 class Job(BaseModel):
     job_id: str = Field(default_factory=new_job_id)
+    user_id: str
     status: JobStatus = JobStatus.PENDING
     document_key: str
     content_type: str = "text/plain"
@@ -55,3 +56,11 @@ class Job(BaseModel):
     updated_at: datetime = Field(default_factory=utc_now)
     result: SummaryResult | None = None
     error: str | None = None
+
+
+class Conversation(BaseModel):
+    conversation_id: str = Field(default_factory=new_job_id)
+    user_id: str
+    messages: list[ChatMessage] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)

@@ -13,9 +13,17 @@ from docpipe_core.llm import (
     ModelInvocationError,
     SummarizerClient,
 )
-from docpipe_core.models import ChatMessage, ChatReply, Job, JobStatus, SummaryResult
+from docpipe_core.models import (
+    ChatMessage,
+    ChatReply,
+    Conversation,
+    Job,
+    JobStatus,
+    SummaryResult,
+)
 from docpipe_core.observability import configure_logging, emit_metric, get_logger
 from docpipe_core.queue import JobQueue, QueueMessage
+from docpipe_core.retrieval import KnowledgeBaseClient, RetrievedPassage
 from docpipe_core.storage import DocumentStore, JobStore
 
 __version__ = "0.1.0"
@@ -25,13 +33,16 @@ __all__ = [
     "ChatClient",
     "ChatMessage",
     "ChatReply",
+    "Conversation",
     "DocumentStore",
     "Job",
     "JobQueue",
     "JobStatus",
     "JobStore",
+    "KnowledgeBaseClient",
     "ModelInvocationError",
     "QueueMessage",
+    "RetrievedPassage",
     "SummarizerClient",
     "SummaryResult",
     "configure_logging",

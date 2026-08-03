@@ -9,39 +9,50 @@ the health.studio Next.js app (which runs on its own infra). Built on:
 ## Two flows, one shared package
 
 ```
-health.studio (Next.js, server-side)
-        │  API key (server→server; no browser calls)
-        ▼
-  API Gateway
-   ├── POST /chat ──────▶ Lambda ──▶ Bedrock (DeepSeek)      [sync]
-   │                        └──▶ DynamoDB (conversations)
+health.studio (Next.js, server-side)          health.studio knowledge base
+        │  API key + opaque userId                 (docs/anatomy, articles —
+        ▼                                           public, evidence-graded)
+  API Gateway                                              │ sync
+   ├── POST /chat ──────▶ Lambda ─┬▶ Bedrock KB (retrieve) ◀── S3 + S3 Vectors
+   │                     [sync]   └▶ Bedrock (DeepSeek, grounded + cited)
+   │                        └──▶ DynamoDB (userId → conversations)
    ├── POST /summarize ─▶ Lambda ──▶ S3 + DynamoDB + SQS     [async]
    │                                      │
    │                                      ▼
    │                              EKS worker ──▶ Bedrock
    │                                      │        │
    │                                     DLQ   DynamoDB + Aurora
-   └── GET /jobs/{id} ──▶ Lambda ──▶ DynamoDB (job status)
+   └── GET /jobs/{id} ──▶ Lambda ──▶ DynamoDB (userId → job status)
 ```
 
-1. **Chat (sync)** — the health.studio app posts a conversation; Lambda calls
-   Bedrock via the Converse API and returns the assistant reply. Conversations
-   persist in DynamoDB. Latency-sensitive → Lambda, no queue.
+1. **Chat (sync, grounded)** — the app posts a conversation with an opaque
+   `userId`; Lambda retrieves the top-k relevant passages from the **Bedrock
+   Knowledge Base** (built from health.studio's public, evidence-graded
+   anatomy/exercise-science corpus), then calls DeepSeek via the Converse API
+   with those passages as grounding context. Replies cite their sources; when
+   the KB doesn't cover a question, the assistant says so instead of guessing.
+   Conversations persist per-user in DynamoDB.
 2. **Summaries (async)** — training logs / session notes go to S3, a job is
    enqueued on SQS, the EKS worker summarizes via Bedrock and writes results
-   to DynamoDB (status) and Aurora (history). LLM calls are slow → they never
-   block the request path.
+   to DynamoDB (status) and Aurora (per-user history). LLM calls are slow →
+   they never block the request path.
 
 The compute split is deliberate: Lambda for the spiky request edge, EKS for
 the long-running consumer. Both reuse one Python package, `docpipe-core`.
+The KB vector store is **S3 Vectors** (not OpenSearch Serverless) so the
+whole chat path stays near-zero cost at rest.
 
 ## Health & privacy constraints
 
 - The assistant is **non-diagnostic**: system prompt forbids diagnosis and
   prescriptions, and directs red-flag symptoms to a clinician (mirrors the
   red-flag gate already in the health.studio app).
+- **Grounded, not vibes**: answers are anchored to the same evidence-graded,
+  publicly-sourced knowledge base the app publishes — with citations — and
+  the assistant admits when the KB doesn't cover a topic.
 - **No PII/PHI leaves health.studio**: the app sends anonymous conversation
-  content keyed by opaque IDs — no names, emails, or account data.
+  content keyed by opaque user/conversation IDs — no names, emails, or
+  account data. The KB contains only public content.
 - All calls are server-to-server; the browser never talks to this API.
 
 ## Repo layout

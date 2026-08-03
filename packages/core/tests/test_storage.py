@@ -12,7 +12,7 @@ def test_document_put_and_get(s3_bucket) -> None:
 
 def test_job_save_and_get(jobs_table) -> None:
     store = JobStore("docpipe-jobs", dynamodb_resource=jobs_table)
-    job = Job(document_key="documents/abc")
+    job = Job(user_id="user1", document_key="documents/abc")
     store.save(job)
     loaded = store.get(job.job_id)
     assert loaded == job
@@ -25,7 +25,7 @@ def test_job_get_missing_returns_none(jobs_table) -> None:
 
 def test_update_status_with_result(jobs_table) -> None:
     store = JobStore("docpipe-jobs", dynamodb_resource=jobs_table)
-    job = Job(document_key="documents/abc")
+    job = Job(user_id="user1", document_key="documents/abc")
     store.save(job)
 
     result = SummaryResult(
