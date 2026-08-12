@@ -178,6 +178,83 @@ def invocation_logging() -> dict:
     }
 
 
+def guardrail_enforced() -> bool:
+    """True once a Converse call actually passes ``guardrailConfig``.
+
+    A guardrail existing in the account enforces nothing on its own — it only
+    applies to calls that reference it. Detected from source so the dashboard
+    flips by itself when Phase 3 wires it in.
+    """
+    src = REPO / "packages" / "core" / "src" / "docpipe_core"
+    return any("guardrailConfig" in f.read_text(errors="ignore") for f in src.rglob("*.py"))
+
+
+def bedrock_setup(gid: str, kb_id: str, ds_id: str) -> dict:
+    """The full Bedrock configuration: guardrail policies, KB, invocation logging."""
+    br = session.client("bedrock")
+    ag = session.client("bedrock-agent")
+    g = br.get_guardrail(guardrailIdentifier=gid, guardrailVersion="DRAFT")
+    kb = ag.get_knowledge_base(knowledgeBaseId=kb_id)["knowledgeBase"]
+    ds = ag.get_data_source(knowledgeBaseId=kb_id, dataSourceId=ds_id)["dataSource"]
+    log = br.get_model_invocation_logging_configuration()["loggingConfig"]
+
+    vec = kb["knowledgeBaseConfiguration"]["vectorKnowledgeBaseConfiguration"]
+    emb = vec.get("embeddingModelConfiguration", {}).get("bedrockEmbeddingModelConfiguration", {})
+    chunk = ds.get("vectorIngestionConfiguration", {}).get("chunkingConfiguration", {})
+    fixed = chunk.get("fixedSizeChunkingConfiguration", {})
+
+    return {
+        "guardrail": {
+            "name": g["name"],
+            "id": gid,
+            "version": g["version"],
+            "status": g["status"],
+            "updated": str(g.get("updatedAt", ""))[:16],
+            "enforced": guardrail_enforced(),
+            "topics": [
+                {
+                    "name": t["name"],
+                    "action": t["type"],
+                    "definition": t["definition"],
+                    "examples": t.get("examples", []),
+                }
+                for t in g.get("topicPolicy", {}).get("topics", [])
+            ],
+            "filters": [
+                {"type": f["type"], "input": f["inputStrength"], "output": f["outputStrength"]}
+                for f in g.get("contentPolicy", {}).get("filters", [])
+            ],
+            "pii": [
+                {"type": p["type"], "action": p["action"]}
+                for p in g.get("sensitiveInformationPolicy", {}).get("piiEntities", [])
+            ],
+            "grounding": [
+                {"type": f["type"], "threshold": f["threshold"]}
+                for f in g.get("contextualGroundingPolicy", {}).get("filters", [])
+            ],
+            "blocked_message": g.get("blockedInputMessaging", ""),
+        },
+        "kb": {
+            "embedding_model": vec["embeddingModelArn"].split("/")[-1],
+            "dimensions": emb.get("dimensions"),
+            "data_type": emb.get("embeddingDataType"),
+            "store": kb["storageConfiguration"]["type"],
+            "chunking": chunk.get("chunkingStrategy"),
+            "chunk_tokens": fixed.get("maxTokens"),
+            "chunk_overlap_pct": fixed.get("overlapPercentage"),
+            "deletion_policy": ds.get("dataDeletionPolicy"),
+        },
+        "logging": {
+            "text": log.get("textDataDeliveryEnabled", False),
+            "images": log.get("imageDataDeliveryEnabled", False),
+            "embeddings": log.get("embeddingDataDeliveryEnabled", False),
+            "video": log.get("videoDataDeliveryEnabled", False),
+            "s3_prefix": log.get("s3Config", {}).get("keyPrefix"),
+            "log_group": log.get("cloudWatchConfig", {}).get("logGroupName"),
+        },
+    }
+
+
 def network(vpc_id: str) -> dict:
     c = session.client("ec2")
     subnets = c.describe_subnets(Filters=[{"Name": "vpc-id", "Values": [vpc_id]}])["Subnets"]
@@ -365,6 +442,9 @@ def main() -> int:
 
     models, models_err = probe(bedrock_models)
     cost, cost_err = probe(month_to_date_cost)
+    setup, setup_err = probe(
+        bedrock_setup, out("guardrail_id"), out("knowledge_base_id"), out("kb_data_source_id")
+    )
 
     report = {
         "generated": datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
@@ -377,6 +457,8 @@ def main() -> int:
         "services": services,
         "models": models,
         "models_error": models_err,
+        "bedrock": setup,
+        "bedrock_error": setup_err,
         "cost": cost,
         "cost_error": cost_err,
         "phases": plan_progress(),

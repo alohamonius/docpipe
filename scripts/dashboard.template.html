@@ -264,6 +264,77 @@
   .model .id { font-family: var(--mono); font-size: 13px; font-weight: 600; word-break: break-all; }
   .model .tags { display: flex; flex-wrap: wrap; gap: 6px; }
 
+  /* ---- bedrock setup (explainers) ---- */
+  .banner {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 14px 16px;
+    border: 1px solid var(--accent);
+    background: var(--accent-soft);
+    border-radius: 4px;
+    font-size: 13.5px;
+    line-height: 1.5;
+  }
+  .banner .bl {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    white-space: nowrap;
+    padding-top: 2px;
+  }
+  .ctrl {
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    padding: 20px 0;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .ctrl:last-child { border-bottom: 0; padding-bottom: 0; }
+  .ctrl-h { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .ctrl-h h4 { font-size: 14.5px; font-weight: 650; letter-spacing: -0.012em; margin: 0; }
+  .ctrl > p { margin: 0; color: var(--muted); font-size: 13px; max-width: 74ch; line-height: 1.55; }
+  .topics { display: grid; grid-template-columns: repeat(auto-fit, minmax(296px, 1fr)); gap: 10px; }
+  .topic {
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 12px 14px;
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .topic .tn { font-family: var(--mono); font-size: 12.5px; font-weight: 600; }
+  .topic .td { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+  .topic .te { font-size: 11.5px; color: var(--faint); font-style: italic; line-height: 1.45; }
+  .meter { display: inline-flex; gap: 2px; vertical-align: middle; margin-left: 7px; }
+  .seg { width: 9px; height: 6px; background: var(--sunk); border-radius: 1px; }
+  .seg.on { background: var(--accent); }
+  td.str { white-space: nowrap; font-family: var(--mono); font-size: 11.5px; }
+  .quote {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    background: var(--surface);
+    border-radius: 4px;
+    padding: 12px 14px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--ink);
+  }
+  .kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+  .kvi {
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 11px 13px;
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .kvi b { font-family: var(--mono); font-size: 13px; font-weight: 600; word-break: break-all; }
+
   /* ---- phases ---- */
   .phases { display: flex; flex-direction: column; gap: 2px; }
   .phase {
@@ -406,6 +477,205 @@
     return s;
   }
 
+  /* What each Bedrock control actually does. Kept here, next to the rendering,
+     so status.py stays a pure fact-gatherer. */
+  const FILTER_DOC = {
+    HATE: "Language that demeans a person or group by identity — race, religion, gender, orientation.",
+    INSULTS: "Belittling, humiliating or mocking language aimed at a person.",
+    SEXUAL: "Sexual content or explicit references.",
+    VIOLENCE: "Content that glorifies, incites or instructs physical harm.",
+    MISCONDUCT: "Requests for, or instructions on, criminal and other harmful activity.",
+    PROMPT_ATTACK:
+      "Jailbreaks and prompt injection — attempts to override the system prompt. " +
+      "Input-side only, which is why its output strength has to be NONE.",
+  };
+  const PII_DOC = {
+    ANONYMIZE: "the value is swapped for a typed placeholder before the model ever sees it",
+    BLOCK: "the whole request is rejected",
+  };
+  const GROUND_DOC = {
+    GROUNDING:
+      "Scores how well the answer is supported by the passages actually retrieved from the " +
+      "knowledge base. Score below the threshold and the reply is blocked — this is the " +
+      "anti-hallucination control, and it is the reason RAG plus a guardrail beats RAG alone.",
+    RELEVANCE: "Scores whether the answer addresses the question that was asked.",
+  };
+  const STRENGTH = { NONE: 0, LOW: 1, MEDIUM: 2, HIGH: 3 };
+
+  function meter(level) {
+    const m = el("span", "meter");
+    const n = STRENGTH[level] ?? 0;
+    for (let i = 0; i < 3; i++) add(m, el("i", "seg" + (i < n ? " on" : "")));
+    return m;
+  }
+
+  function control(title, chips, explanation, body) {
+    const c = el("div", "ctrl");
+    const h = el("div", "ctrl-h");
+    add(h, el("h4", null, title));
+    (chips || []).forEach(t => add(h, el("span", "chip", t)));
+    add(c, h, el("p", null, explanation));
+    if (body) add(c, body);
+    return c;
+  }
+
+  function renderBedrock(b, app) {
+    const box = el("div");
+    const g = b.guardrail;
+
+    if (g && !g.enforced) {
+      const banner = el("div", "banner");
+      add(banner, el("span", "bl", "not live"));
+      add(banner, el("span", null,
+        "Everything below is configured and READY in the account, but no request is " +
+        "filtered by it yet. A Bedrock guardrail only applies to calls that pass its id in " +
+        "guardrailConfig — creating one enforces nothing on its own. Wiring it into the " +
+        "Converse calls is a Phase 3 task, and this banner disappears on its own once the " +
+        "code does it."));
+      add(box, banner);
+    }
+
+    /* 1 — denied topics */
+    if (g && g.topics.length) {
+      const grid = el("div", "topics");
+      g.topics.forEach(t => {
+        const c = el("div", "topic");
+        const head = el("div", "ctrl-h");
+        add(head, el("span", "tn", t.name), el("span", "chip is-err", t.action));
+        add(c, head, el("div", "td", t.definition));
+        if (t.examples.length) {
+          add(c, el("div", "te", t.examples.map(e => "“" + e + "”").join("  ·  ")));
+        }
+        add(grid, c);
+      });
+      add(box, control(
+        "Denied topics", [g.topics.length + " topics"],
+        "Blocks whole subject areas however they are phrased — the definition does the work " +
+        "and the examples tune it, so a rewording gets caught too. This is the control that " +
+        "keeps a fitness assistant from practising medicine.",
+        grid));
+    }
+
+    /* 2 — content filters */
+    if (g && g.filters.length) {
+      const wrap = el("div", "costwrap");
+      const table = el("table");
+      const thead = el("thead");
+      const hr = el("tr");
+      add(hr, el("th", null, "Filter"), el("th", null, "Prompt"), el("th", null, "Response"),
+          el("th", null, "What it catches"));
+      add(thead, hr);
+      const tb = el("tbody");
+      g.filters.forEach(f => {
+        const tr = el("tr");
+        add(tr, el("td", "mono", f.type));
+        const inC = el("td", "str", f.input); add(inC, meter(f.input));
+        const outC = el("td", "str", f.output); add(outC, meter(f.output));
+        add(tr, inC, outC, el("td", null, FILTER_DOC[f.type] || ""));
+        add(tb, tr);
+      });
+      add(table, thead, tb);
+      add(wrap, table);
+      add(box, control(
+        "Content filters", [g.filters.length + " categories"],
+        "Six harm categories, each scored independently on the way in and on the way out. " +
+        "Strength runs NONE → LOW → MEDIUM → HIGH; higher catches more and produces more " +
+        "false positives, which is why only SEXUAL and PROMPT_ATTACK are set to HIGH here.",
+        wrap));
+    }
+
+    /* 3 — PII */
+    if (g && g.pii.length) {
+      const grid = el("div", "kv");
+      g.pii.forEach(p => {
+        const i = el("div", "kvi");
+        add(i, el("span", "label", p.action), el("b", null, p.type));
+        add(grid, i);
+      });
+      const actions = [...new Set(g.pii.map(p => p.action))];
+      add(box, control(
+        "Sensitive information", [g.pii.length + " entity types"],
+        "Detected personal data is handled before the model is called: with ANONYMIZE " +
+        PII_DOC.ANONYMIZE + ", where BLOCK would mean " + PII_DOC.BLOCK + ". " +
+        "This stack anonymizes, so a user who types their name into a question still gets " +
+        "an answer — the name just never reaches DeepSeek or the invocation log.",
+        grid));
+      void actions;
+    }
+
+    /* 4 — contextual grounding */
+    if (g && g.grounding.length) {
+      const grid = el("div", "topics");
+      g.grounding.forEach(f => {
+        const c = el("div", "topic");
+        const head = el("div", "ctrl-h");
+        add(head, el("span", "tn", f.type),
+            el("span", "chip is-accent", "≥ " + f.threshold));
+        add(c, head, el("div", "td", GROUND_DOC[f.type] || ""));
+        add(grid, c);
+      });
+      add(box, control(
+        "Contextual grounding", ["threshold " + g.grounding[0].threshold],
+        "Two scores computed per reply, from 0 to 1. The reply must clear the threshold or " +
+        "it is blocked rather than returned.",
+        grid));
+    }
+
+    /* 5 — blocked message */
+    if (g && g.blocked_message) {
+      add(box, control(
+        "What a blocked user sees", ["input + output"],
+        "When any policy above trips, the model is never called and this exact text is " +
+        "returned instead. Worth writing deliberately — it is the only thing the user reads.",
+        el("div", "quote", g.blocked_message)));
+    }
+
+    /* 6 — knowledge base */
+    if (b.kb) {
+      const k = b.kb;
+      const grid = el("div", "kv");
+      [["Embedding model", k.embedding_model], ["Vector size", k.dimensions + " × " + k.data_type],
+       ["Chunking", k.chunking], ["Chunk size", k.chunk_tokens + " tokens"],
+       ["Overlap", k.chunk_overlap_pct + "%"], ["Vector store", k.store],
+       ["On source delete", k.deletion_policy]]
+        .forEach(([label, val]) => {
+          const i = el("div", "kvi");
+          add(i, el("span", "label", label), el("b", null, val));
+          add(grid, i);
+        });
+      add(box, control(
+        "Retrieval settings", [k.store],
+        "Documents are never embedded whole. Each is split into " + k.chunk_tokens +
+        "-token chunks overlapping by " + k.chunk_overlap_pct + "%, so a passage that straddles " +
+        "a boundary still survives intact inside one chunk; those chunks are what get embedded, " +
+        "searched and cited. Titan turns each one into a " + k.dimensions + "-number vector, and " +
+        "that count has to match the S3 Vectors index exactly — a mismatch is a create-time error.",
+        grid));
+    }
+
+    /* 7 — invocation logging */
+    if (b.logging) {
+      const l = b.logging;
+      const grid = el("div", "kv");
+      [["Prompts + replies", l.text ? "logged" : "off"], ["Images", l.images ? "logged" : "off"],
+       ["Embeddings", l.embeddings ? "logged" : "off"], ["Video", l.video ? "logged" : "off"]]
+        .forEach(([label, val]) => {
+          const i = el("div", "kvi");
+          add(i, el("span", "label", label), el("b", null, val));
+          add(grid, i);
+        });
+      add(box, control(
+        "Invocation logging", ["account-wide"],
+        "Every prompt and completion is archived to S3 (" + (l.s3_prefix || "—") +
+        ") and CloudWatch (" + (l.log_group || "—") + "). This is account-level and applies to " +
+        "every model call in the region, not just this app's. Embedding logging stays off on " +
+        "purpose — it would archive a vector per chunk, which is enormous and useless for audit.",
+        grid));
+    }
+
+    add(app, section("Bedrock setup", g ? g.id + " · " + g.status : null, box));
+  }
+
   function render(d) {
     const app = document.getElementById("app");
 
@@ -489,6 +759,9 @@
       });
       add(app, section("Bedrock models", d.models.total_visible + " visible", grid));
     }
+
+    /* bedrock setup -------------------------------------------------- */
+    if (d.bedrock) renderBedrock(d.bedrock, app);
 
     /* phases --------------------------------------------------------- */
     const ph = el("div", "phases");
