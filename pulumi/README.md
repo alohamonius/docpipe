@@ -24,11 +24,13 @@ concern in `components/`, wired in `__main__.py`.
 ## State backend (S3, self-managed — no Pulumi Cloud)
 
 ```bash
-pulumi login s3://docpipe-tfstate-733866507398/pulumi
+# The region query param is required — a bare s3:// URL 301s on a non-default region.
+pulumi login "s3://docpipe-tfstate-<ACCOUNT_ID>/pulumi?region=us-east-1&awssdk=v2&profile=docpipe"
 export PULUMI_CONFIG_PASSPHRASE=""   # no secrets in config yet; set a real one before adding any
 ```
 
-(Reuses the existing state bucket under a `pulumi/` prefix.)
+(Reuses the existing state bucket under a `pulumi/` prefix. Substitute your own
+AWS account id for `<ACCOUNT_ID>`.)
 
 ## Commands
 

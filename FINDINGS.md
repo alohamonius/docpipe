@@ -13,7 +13,7 @@ it into real rules (README, PLAN, a test).
   Consequence: "managed agent" for docpipe means AgentCore (or an agent
   framework like Strands running in our own Lambda), not classic Agents.
 - **DeepSeek V3.2 on Bedrock does tool use via Converse.** Smoke test
-  (us-east-1, account 733866507398): `converse(modelId="deepseek.v3.2",
+  (us-east-1, the docpipe account): `converse(modelId="deepseek.v3.2",
   toolConfig=…)` → `stopReason=tool_use`, sensible `search_kb` call, 400 total
   tokens. It is `ON_DEMAND` — invoked by plain model id `deepseek.v3.2`, **no
   inference profile** (unlike R1, which needs `us.deepseek.r1-v1:0`).
@@ -28,7 +28,7 @@ Hit while bringing the dev stack up for the first time (all fixed in
 
 - **`pulumi login s3://bucket` 301s unless the URL is region-qualified.**
   Working form: `pulumi login
-  "s3://docpipe-tfstate-733866507398/pulumi?region=us-east-1&awssdk=v2&profile=docpipe"`.
+  "s3://docpipe-tfstate-<ACCOUNT_ID>/pulumi?region=us-east-1&awssdk=v2&profile=docpipe"`.
 - **Dynamic providers do NOT inherit `aws:profile`** — that config only reaches
   pulumi-aws. Raw boto3 in a dynamic provider falls back to the default
   credential chain (here: expired creds → `AccessDeniedException: security
