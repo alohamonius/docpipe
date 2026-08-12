@@ -4,7 +4,7 @@ The AWS-hosted AI backend for [health.studio](https://health.studio): a chat
 assistant and an async document-summarization pipeline, called server-side by
 the health.studio Next.js app (which runs on its own infra). Built on:
 
-**Bedrock (DeepSeek) · Lambda · EKS · DynamoDB · API Gateway · S3 · RDS (Aurora) · VPC · IAM · CloudWatch · SQS — provisioned with Terraform.**
+**Bedrock (DeepSeek) · Lambda · DynamoDB · API Gateway · S3 · RDS (Aurora) · VPC · IAM · CloudWatch · SQS — provisioned with Pulumi (Python).**
 
 ## How it works
 
@@ -113,19 +113,18 @@ while the EKS + Aurora side is torn down between sessions.
 packages/core/     docpipe-core: models, storage, queue, Bedrock chat +
                    summarization clients, observability. Reused everywhere.
 services/api/      Lambda handlers behind API Gateway.
-services/worker/   FastAPI SQS consumer, containerized, deployed to EKS.
-infra/             Terraform. Reusable modules + a dev environment.
+services/worker/   SQS consumer for async summaries (compute TBD — see PLAN).
+pulumi/            Pulumi (Python). One component per concern, dev stack.
 ```
 
 ## Infra / secrets split
 
 Everything in this repo is public by design. What never enters git:
 
-- `terraform.tfstate` — lives in a remote S3 backend (native lockfile, TF ≥ 1.10)
-- real `*.tfvars` — only `terraform.tfvars.example` is committed
-- credentials — AWS auth via SSO/environment, never in code
+- Pulumi state — lives in a self-managed S3 backend (`pulumi login s3://…`)
+- credentials — AWS auth via profile/SSO/environment, never in code
 
-See [`infra/README.md`](infra/README.md) for the module map and
+See [`pulumi/README.md`](pulumi/README.md) for the component map and
 [`PLAN.md`](PLAN.md) for the build phases and current status.
 
 ## Dev quickstart
@@ -133,14 +132,48 @@ See [`infra/README.md`](infra/README.md) for the module map and
 ```bash
 uv sync --all-packages         # install workspace incl. dev deps (Python 3.12)
 uv run pytest                  # shared package tests
-make fmt lint typecheck        # ruff + mypy, terraform fmt
+make fmt lint typecheck        # ruff + mypy
+make status                    # live stack snapshot → dashboard.html
 ```
+
+### `make status`
+
+Probes the deployed stack and writes `status.json` + a self-contained
+`dashboard.html`: resource inventory (Pulumi state), per-service health and
+metrics (DynamoDB, S3, SQS, KB, guardrail, VPC), Bedrock model availability,
+month-to-date cost (Cost Explorer), and build progress parsed from `PLAN.md`.
+Every probe is independent — a missing permission degrades one card instead of
+failing the run. Both files are gitignored; regenerate rather than commit.
 
 ## Cost notes
 
-This stack is not free-tier: EKS control plane (~$73/mo), NAT gateway
-(~$32/mo), Aurora. The dev environment is built to be created and destroyed
-per session (`make infra-up` / `make infra-down`), with Aurora Serverless v2
-at minimum ACU and a single NAT gateway. The sync chat path alone (API
-Gateway + Lambda + Bedrock + DynamoDB) costs near-zero at rest — it can stay
-up permanently while the EKS/Aurora side is torn down between sessions.
+The foundation is designed to cost **~$0 at rest**. There is deliberately **no
+NAT gateway** — nothing needs VPC egress (the chat Lambda runs outside the VPC;
+the KB is serverless S3 Vectors; Aurora uses the RDS Data API). The VPC,
+subnets, gateway endpoints, DynamoDB (on-demand), SQS, S3, and S3 Vectors are
+all free or pay-per-use at rest.
+
+Nothing deployed today has a standing cost. The sync chat path (API Gateway +
+Lambda + Bedrock + DynamoDB + KB) can stay up permanently; `make infra-down`
+tears down everything when idle. Worker compute (Phase 5) is still an open
+decision — EKS would be the one always-on cost (~$73/mo), which is why Lambda
+is the default recommendation.
+
+**The four classic budget sinks in this stack — and how we avoid them:**
+
+| Sink | If you're careless | Our design |
+|------|-------------|------------|
+| NAT gateway | ~$32/mo idle | **Removed** — no VPC egress needed |
+| OpenSearch Serverless (vector store) | ~$345/mo floor | **S3 Vectors** instead |
+| EKS control plane | ~$73/mo always-on | Phase 5 only; tear down when idle (reconsider vs Lambda/Fargate) |
+| Aurora warm cluster | ~$43/mo+ | `min_capacity = 0` → **auto-pauses**, idle ≈ $0; ~$0.12/ACU-hr only while serving; gated off by default |
+
+### Deliberate trade-offs (not just "picked the cheap option")
+
+- **Aurora `min_capacity = 0` costs a cold first query.** When the cluster has
+  auto-paused, the first connection pays a resume latency before it serves.
+  We accept that because the summary worker is async — a few seconds on the
+  first job after idle is invisible to users. *Measured resume time (Phase 5,
+  once Aurora is live): **TODO — time it and record the number here.***
+- **Titan v2 embeddings pinned to 1024 dims** (`dimensions = 1024`), matching
+  the S3 Vectors index. Chosen once, up front — the index can't mix dimensions.

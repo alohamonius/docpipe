@@ -14,16 +14,18 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --all-packages
-      - run: uv run ruff check packages
-      - run: uv run ruff format --check packages
+      - run: uv run ruff check packages services scripts
+      - run: uv run ruff format --check packages services scripts
       - run: uv run mypy packages/core/src
       - run: uv run pytest
 
-  terraform:
+  infra:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: astral-sh/setup-uv@v5
         with:
-          terraform_version: "1.10.5"
-      - run: terraform fmt -check -recursive infra
+          python-version: "3.12"
+      # Lint only — a `pulumi preview` would need AWS credentials.
+      - run: uvx ruff check pulumi/components pulumi/__main__.py
+      - run: uvx ruff format --check pulumi/components pulumi/__main__.py

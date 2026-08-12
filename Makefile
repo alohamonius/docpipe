@@ -1,15 +1,13 @@
-.PHONY: sync fmt lint typecheck test infra-init infra-up infra-down
+.PHONY: sync fmt lint typecheck test status infra-preview infra-up infra-down
 
 sync:
 	uv sync --all-packages
 
 fmt:
-	uv run ruff format packages services
-	terraform fmt -recursive infra
+	uv run ruff format packages services scripts
 
 lint:
-	uv run ruff check packages services
-	terraform fmt -check -recursive infra
+	uv run ruff check packages services scripts
 
 typecheck:
 	uv run mypy packages/core/src
@@ -17,13 +15,16 @@ typecheck:
 test:
 	uv run pytest
 
-# Infra targets operate on the dev environment.
-# Requires infra/envs/dev/backend.hcl and terraform.tfvars (gitignored).
-infra-init:
-	terraform -chdir=infra/envs/dev init -backend-config=backend.hcl
+# Live stack snapshot → status.json + dashboard.html (both gitignored).
+status:
+	uv run --with boto3 python scripts/status.py
+
+# Infra targets operate on the dev stack (see pulumi/README.md for backend login).
+infra-preview:
+	cd pulumi && pulumi preview
 
 infra-up:
-	terraform -chdir=infra/envs/dev apply
+	cd pulumi && pulumi up
 
 infra-down:
-	terraform -chdir=infra/envs/dev destroy
+	cd pulumi && pulumi destroy
