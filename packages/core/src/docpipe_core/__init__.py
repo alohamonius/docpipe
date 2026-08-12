@@ -7,6 +7,14 @@
 - observability: structured logging + CloudWatch EMF metrics
 """
 
+from docpipe_core.kb_sync import (
+    CorpusSyncer,
+    IngestionOutcome,
+    PlannedDoc,
+    SyncAction,
+    SyncReport,
+    discover_corpus,
+)
 from docpipe_core.llm import (
     HEALTH_ASSISTANT_SYSTEM,
     ChatClient,
@@ -34,18 +42,24 @@ __all__ = [
     "ChatMessage",
     "ChatReply",
     "Conversation",
+    "CorpusSyncer",
     "DocumentStore",
+    "IngestionOutcome",
     "Job",
     "JobQueue",
     "JobStatus",
     "JobStore",
     "KnowledgeBaseClient",
     "ModelInvocationError",
+    "PlannedDoc",
     "QueueMessage",
     "RetrievedPassage",
     "SummarizerClient",
     "SummaryResult",
+    "SyncAction",
+    "SyncReport",
     "configure_logging",
+    "discover_corpus",
     "emit_metric",
     "get_logger",
 ]
