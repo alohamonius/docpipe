@@ -1,0 +1,567 @@
+<title>docpipe — stack status</title>
+<style>
+  :root {
+    --ground: #f6f7f9;
+    --surface: #ffffff;
+    --sunk: #eef0f4;
+    --ink: #171c24;
+    --muted: #5c6675;
+    --faint: #8b95a4;
+    --line: #dde1e8;
+    --hairline: #e7eaf0;
+    --accent: #a8681c;
+    --accent-soft: #f3e6d3;
+    --live: #12684a;
+    --live-soft: #dff0e7;
+    --idle: #6b7686;
+    --err: #a8352a;
+    --err-soft: #f7e2df;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #13171e;
+      --surface: #1a1f28;
+      --sunk: #10141a;
+      --ink: #e5e9f0;
+      --muted: #97a1b1;
+      --faint: #6d7788;
+      --line: #2a313d;
+      --hairline: #232a34;
+      --accent: #e0a45a;
+      --accent-soft: #35291a;
+      --live: #52c894;
+      --live-soft: #16281f;
+      --idle: #7a8496;
+      --err: #f0847a;
+      --err-soft: #2e1c1a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #13171e;
+    --surface: #1a1f28;
+    --sunk: #10141a;
+    --ink: #e5e9f0;
+    --muted: #97a1b1;
+    --faint: #6d7788;
+    --line: #2a313d;
+    --hairline: #232a34;
+    --accent: #e0a45a;
+    --accent-soft: #35291a;
+    --live: #52c894;
+    --live-soft: #16281f;
+    --idle: #7a8496;
+    --err: #f0847a;
+    --err-soft: #2e1c1a;
+  }
+  :root[data-theme="light"] {
+    --ground: #f6f7f9;
+    --surface: #ffffff;
+    --sunk: #eef0f4;
+    --ink: #171c24;
+    --muted: #5c6675;
+    --faint: #8b95a4;
+    --line: #dde1e8;
+    --hairline: #e7eaf0;
+    --accent: #a8681c;
+    --accent-soft: #f3e6d3;
+    --live: #12684a;
+    --live-soft: #dff0e7;
+    --idle: #6b7686;
+    --err: #a8352a;
+    --err-soft: #f7e2df;
+  }
+
+  :root {
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: clamp(28px, 5vw, 60px) clamp(16px, 4vw, 32px) 72px;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(40px, 5vw, 60px);
+  }
+
+  /* ---- shared atoms ---- */
+  .label {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  .num { font-variant-numeric: tabular-nums; }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex: none;
+    background: var(--idle);
+  }
+  .dot.is-live { background: var(--live); }
+  .dot.is-err { background: var(--err); }
+
+  .chip {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 3px;
+    background: var(--sunk);
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .chip.is-live { background: var(--live-soft); color: var(--live); }
+  .chip.is-err { background: var(--err-soft); color: var(--err); }
+  .chip.is-accent { background: var(--accent-soft); color: var(--accent); }
+
+  /* ---- masthead ---- */
+  .masthead { display: flex; flex-direction: column; gap: 14px; }
+  .masthead h1 {
+    font-size: clamp(30px, 5vw, 42px);
+    font-weight: 800;
+    letter-spacing: -0.032em;
+    line-height: 1.05;
+    text-wrap: balance;
+    margin: 0;
+  }
+  .masthead h1 .dim { color: var(--faint); font-weight: 700; }
+  .masthead p { margin: 0; color: var(--muted); max-width: 60ch; }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    padding-top: 4px;
+    border-top: 1px solid var(--line);
+  }
+  .meta span { display: inline-flex; align-items: center; gap: 7px; }
+
+  /* ---- kpi strip ---- */
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(186px, 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .kpi {
+    background: var(--surface);
+    padding: 18px 20px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .kpi b {
+    font-size: 34px;
+    font-weight: 750;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi small { color: var(--muted); font-size: 12.5px; }
+  .kpi .of { font-size: 19px; color: var(--faint); font-weight: 600; }
+
+  /* ---- strata sections ---- */
+  section { display: flex; flex-direction: column; gap: 16px; }
+  .strata-head {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--ink);
+  }
+  .strata-head h2 {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin: 0;
+  }
+  .strata-head .rule { flex: 1; height: 1px; }
+  .strata-head .count { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(258px, 1fr));
+    gap: 12px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 15px 16px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .card-top { display: flex; align-items: center; gap: 8px; }
+  .card-top h3 {
+    font-size: 14.5px;
+    font-weight: 650;
+    letter-spacing: -0.012em;
+    margin: 0;
+    flex: 1;
+  }
+  .card .rid {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--faint);
+    word-break: break-all;
+    margin-top: -6px;
+  }
+  .metrics { display: flex; flex-direction: column; gap: 5px; }
+  .metric {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-size: 12.5px;
+  }
+  .metric dt { color: var(--faint); font-family: var(--mono); font-size: 10.5px;
+               letter-spacing: 0.07em; text-transform: uppercase; }
+  .metric .lead { flex: 1; height: 1px; background: var(--hairline); transform: translateY(-3px); }
+  .metric dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums;
+               font-size: 12px; text-align: right; }
+  .metric dd.on { color: var(--live); }
+  .metric dd.off { color: var(--faint); }
+  .note {
+    font-size: 12px;
+    color: var(--muted);
+    border-top: 1px solid var(--hairline);
+    padding-top: 9px;
+    line-height: 1.45;
+  }
+  .fail { font-size: 12px; color: var(--err); font-family: var(--mono); }
+
+  /* ---- models ---- */
+  .models { display: grid; grid-template-columns: repeat(auto-fit, minmax(258px, 1fr)); gap: 12px; }
+  .model {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 15px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+  .model .role { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .model .id { font-family: var(--mono); font-size: 13px; font-weight: 600; word-break: break-all; }
+  .model .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  /* ---- phases ---- */
+  .phases { display: flex; flex-direction: column; gap: 2px; }
+  .phase {
+    display: grid;
+    grid-template-columns: 62px minmax(0, 1fr) 120px 56px;
+    align-items: center;
+    gap: 16px;
+    padding: 11px 4px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .phase .pn { font-family: var(--mono); font-size: 11px; color: var(--accent); letter-spacing: 0.06em; }
+  .phase .pt { font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .phase .pt.spent { color: var(--muted); }
+  .track { height: 5px; background: var(--sunk); border-radius: 3px; overflow: hidden; }
+  .fill { height: 100%; background: var(--accent); border-radius: 3px; }
+  .fill.done { background: var(--live); }
+  .phase .pc { font-family: var(--mono); font-size: 11.5px; color: var(--muted);
+               text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* ---- pending ---- */
+  .pending { display: grid; grid-template-columns: repeat(auto-fill, minmax(258px, 1fr)); gap: 12px; }
+  .todo {
+    border: 1px dashed var(--line);
+    border-radius: 4px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: transparent;
+  }
+  .todo b { font-size: 13.5px; font-weight: 600; color: var(--muted); letter-spacing: -0.01em; }
+  .todo span { font-size: 12px; color: var(--faint); }
+
+  /* ---- cost ---- */
+  .costwrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--hairline); }
+  th { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em;
+       text-transform: uppercase; color: var(--faint); font-weight: 500; }
+  td.amt { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .empty {
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 18px 20px;
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 13.5px;
+  }
+  .empty b { color: var(--ink); font-weight: 650; }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding-top: 18px;
+    color: var(--faint);
+    font-size: 12.5px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  footer code {
+    font-family: var(--mono);
+    background: var(--sunk);
+    padding: 1px 6px;
+    border-radius: 3px;
+    color: var(--muted);
+  }
+  @media (max-width: 620px) {
+    .phase { grid-template-columns: 54px minmax(0, 1fr) 48px; }
+    .phase .track { display: none; }
+  }
+</style>
+
+<script>const DATA = /*DATA*/null;</script>
+
+<div class="wrap" id="app"></div>
+
+<script>
+  const el = (tag, cls, txt) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (txt !== undefined && txt !== null) n.textContent = String(txt);
+    return n;
+  };
+  const add = (parent, ...kids) => { kids.forEach(k => k && parent.appendChild(k)); return parent; };
+
+  const titleCase = k => k.replace(/_/g, " ").replace(/^./, c => c.toUpperCase());
+  const bytes = n => n < 1024 ? n + " B"
+    : n < 1048576 ? (n / 1024).toFixed(1) + " KB"
+    : (n / 1048576).toFixed(1) + " MB";
+  const money = n => (Math.abs(n) < 0.005 ? 0 : n).toLocaleString("en-US",
+    { style: "currency", currency: "USD" });
+
+  // A service is live if it answered; ACTIVE/READY status strings are surfaced as-is.
+  const stateOf = s => s.error ? "err" : "live";
+
+  function metricValue(key, val) {
+    if (typeof val === "boolean") return { text: val ? "yes" : "no", cls: val ? "on" : "off" };
+    if (val === null || val === undefined) return { text: "—", cls: "off" };
+    if (Array.isArray(val)) return { text: val.length ? val.join(", ") : "none", cls: "" };
+    if (typeof val === "object") {
+      return { text: Object.entries(val).map(([k, v]) => `${k} ${v}`).join(" · "), cls: "" };
+    }
+    if (/bytes$/.test(key)) return { text: bytes(val), cls: val ? "" : "off" };
+    if (typeof val === "number") return { text: val.toLocaleString("en-US"), cls: val ? "" : "off" };
+    return { text: String(val), cls: "" };
+  }
+
+  function serviceCard(svc) {
+    const card = el("div", "card");
+    const top = el("div", "card-top");
+    add(top, el("span", "dot is-" + stateOf(svc)), el("h3", null, svc.name));
+    const st = svc.error ? "fail" : (svc.data && (svc.data.status || svc.data.state)) || "live";
+    add(top, el("span", "chip is-" + stateOf(svc), st));
+    add(card, top);
+    if (svc.id) add(card, el("div", "rid", svc.id));
+
+    if (svc.error) {
+      add(card, el("div", "fail", svc.error));
+    } else if (svc.data) {
+      const dl = el("dl", "metrics");
+      for (const [k, v] of Object.entries(svc.data)) {
+        if (k === "status" || k === "state" || k === "truncated") continue;
+        const row = el("div", "metric");
+        const { text, cls } = metricValue(k, v);
+        add(row, el("dt", null, titleCase(k)), el("span", "lead"), el("dd", cls, text));
+        add(dl, row);
+      }
+      add(card, dl);
+    }
+    if (svc.note) add(card, el("div", "note", svc.note));
+    return card;
+  }
+
+  function section(title, count, body) {
+    const s = el("section");
+    const head = el("div", "strata-head");
+    add(head, el("h2", null, title), el("span", "rule"),
+        count !== null ? el("span", "count", count) : null);
+    add(s, head, body);
+    return s;
+  }
+
+  function render(d) {
+    const app = document.getElementById("app");
+
+    /* masthead ------------------------------------------------------- */
+    const mast = el("header", "masthead");
+    const h1 = el("h1");
+    add(h1, document.createTextNode("docpipe "), el("span", "dim", "/ dev stack"));
+    add(mast, h1);
+    add(mast, el("p", null,
+      "Live status of the AWS backend behind health.studio — every figure below is read " +
+      "from the AWS APIs and this repo at generation time, not hand-maintained."));
+    const meta = el("div", "meta label");
+    const healthy = d.services.filter(s => !s.error).length;
+    [["region", d.stack.region], ["generated", d.generated],
+     ["services", healthy + "/" + d.services.length + " healthy"]]
+      .forEach(([k, v]) => {
+        const sp = el("span");
+        add(sp, el("span", null, k), el("b", "mono", v));
+        add(meta, sp);
+      });
+    add(mast, meta);
+    add(app, mast);
+
+    /* kpis ----------------------------------------------------------- */
+    const kpis = el("div", "kpis");
+    const doneAll = d.phases.reduce((a, p) => a + p.done, 0);
+    const totalAll = d.phases.reduce((a, p) => a + p.done + p.todo, 0);
+    const tiles = [
+      [d.stack.inventory ? d.stack.inventory.total : "—", null, "Pulumi resources deployed"],
+      [healthy, "/" + d.services.length, "Services responding"],
+      [money(d.cost ? d.cost.total_usd : 0), null,
+       "Spend since " + (d.cost ? d.cost.since : "—")],
+      [Math.round((doneAll / totalAll) * 100) + "%", null,
+       "Build progress · " + doneAll + " of " + totalAll + " tasks"],
+    ];
+    tiles.forEach(([big, of, cap]) => {
+      const t = el("div", "kpi");
+      const b = el("b", null, big);
+      if (of) add(b, el("span", "of", of));
+      add(t, b, el("small", null, cap));
+      add(kpis, t);
+    });
+    add(app, kpis);
+
+    /* strata --------------------------------------------------------- */
+    const order = ["Network", "Data", "Messaging", "Knowledge base", "Safety"];
+    const groups = [...new Set(d.services.map(s => s.group))]
+      .sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99));
+    groups.forEach(g => {
+      const members = d.services.filter(s => s.group === g);
+      const grid = el("div", "cards");
+      members.forEach(s => add(grid, serviceCard(s)));
+      add(app, section(g, members.length + (members.length === 1 ? " service" : " services"), grid));
+    });
+
+    /* models --------------------------------------------------------- */
+    if (d.models) {
+      const grid = el("div", "models");
+      const roles = [
+        ["Agent", d.models.agent_model, "tool-calling loop"],
+        ["Summaries", d.models.summary_model, "async jobs"],
+        ["Embeddings", d.models.embeddings, "knowledge base"],
+      ];
+      roles.forEach(([role, m, use]) => {
+        if (!m) return;
+        const c = el("div", "model");
+        const r = el("div", "role");
+        add(r, el("span", "label", role),
+            el("span", "chip is-" + (m.available ? "live" : "err"),
+               m.available ? "available" : "missing"));
+        add(c, r, el("div", "id", m.id));
+        const tags = el("div", "tags");
+        add(tags, el("span", "chip", use));
+        if (m.invoke) add(tags, el("span", "chip", m.invoke));
+        if ("tool_use" in m) {
+          add(tags, el("span", "chip" + (m.tool_use ? " is-accent" : ""),
+                       m.tool_use ? "tool use" : "no tool use"));
+        }
+        add(c, tags);
+        add(grid, c);
+      });
+      add(app, section("Bedrock models", d.models.total_visible + " visible", grid));
+    }
+
+    /* phases --------------------------------------------------------- */
+    const ph = el("div", "phases");
+    d.phases.forEach(p => {
+      const total = p.done + p.todo;
+      const pct = Math.round((p.done / total) * 100);
+      const row = el("div", "phase");
+      const dash = p.title.indexOf("—");
+      const nameParts = dash > 0
+        ? [p.title.slice(0, dash).trim(), p.title.slice(dash + 1).trim()]
+        : ["", p.title];
+      add(row, el("span", "pn", nameParts[0].replace("Phase ", "P")));
+      add(row, el("span", "pt" + (pct === 100 ? " spent" : ""), nameParts[1]));
+      const track = el("div", "track");
+      const fill = el("div", "fill" + (pct === 100 ? " done" : ""));
+      fill.style.width = pct + "%";
+      add(track, fill);
+      add(row, track, el("span", "pc", p.done + "/" + total));
+      add(ph, row);
+    });
+    add(app, section("Build phases", doneAll + "/" + totalAll, ph));
+
+    /* pending -------------------------------------------------------- */
+    const pend = el("div", "pending");
+    d.pending.forEach(p => {
+      const c = el("div", "todo");
+      add(c, el("b", null, p.name));
+      add(c, el("span", null, p.phase + (p.note ? " · " + p.note : "")));
+      add(pend, c);
+    });
+    add(app, section("Not built yet", d.pending.length + " items", pend));
+
+    /* cost ----------------------------------------------------------- */
+    let costBody;
+    if (d.cost && d.cost.by_service.length) {
+      const wrap = el("div", "costwrap");
+      const table = el("table");
+      const thead = el("thead");
+      const hr = el("tr");
+      add(hr, el("th", null, "Service"), el("th", "amt", "Month to date"));
+      add(thead, hr);
+      const tb = el("tbody");
+      d.cost.by_service.forEach(r => {
+        const tr = el("tr");
+        add(tr, el("td", null, r.service), el("td", "amt", money(r.usd)));
+        add(tb, tr);
+      });
+      add(table, thead, tb);
+      add(wrap, table);
+      costBody = wrap;
+    } else {
+      costBody = el("div", "empty");
+      add(costBody, el("b", null, "No billable usage this month."),
+          document.createTextNode(
+            " The whole foundation is designed to idle at zero: no NAT gateway, " +
+            "S3 Vectors instead of an OpenSearch collection, DynamoDB on demand, " +
+            "and Aurora left switched off. Cost starts when traffic does."));
+    }
+    add(app, section("Cost", d.cost ? "since " + d.cost.since : null, costBody));
+
+    /* footer --------------------------------------------------------- */
+    const f = el("footer");
+    const line1 = el("div");
+    add(line1, document.createTextNode("Regenerate with "), el("code", null, "make status"),
+        document.createTextNode(" — reads Pulumi state, the AWS APIs, and PLAN.md."));
+    add(f, line1);
+    add(f, el("div", null,
+      "Code: " + d.code.core_lines.toLocaleString() + " lines in docpipe-core, " +
+      d.code.test_lines.toLocaleString() + " in tests (" + d.tests + " tests), " +
+      d.code.infra_lines.toLocaleString() + " in Pulumi components. " +
+      "AWS account IDs are masked."));
+    add(app, f);
+  }
+
+  render(DATA);
+</script>
