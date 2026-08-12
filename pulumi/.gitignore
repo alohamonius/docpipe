@@ -1,0 +1,5 @@
+venv/
+__pycache__/
+*.pyc
+# Never commit a Pulumi passphrase or resolved secrets.
+Pulumi.*.yaml.bak

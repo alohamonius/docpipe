@@ -1,4 +1,0 @@
-# Copy to backend.hcl (gitignored) and fill in your own state bucket.
-bucket = "YOUR-tf-state-bucket"
-key    = "docpipe/dev/terraform.tfstate"
-region = "us-east-1"

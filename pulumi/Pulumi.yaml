@@ -1,0 +1,8 @@
+name: docpipe
+runtime:
+  name: python
+  options:
+    virtualenv: venv
+description: >-
+  docpipe AWS infrastructure in Python (Pulumi) — clean rebuild of the earlier
+  Terraform stack. One ComponentResource per concern (see components/).

@@ -1,0 +1,6 @@
+# pulumi-aws 7.40 has the Bedrock KB (aws.bedrock.Agent*, with s3_vectors_configuration
+# storage) + Guardrail, but NOT s3vectors or invocation logging — those two come from
+# boto3-backed dynamic providers (components/s3vectors.py, invocation_logging.py).
+pulumi>=3.140.0
+pulumi-aws>=7.40.0
+boto3>=1.40.0

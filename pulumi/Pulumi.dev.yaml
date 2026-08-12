@@ -1,0 +1,10 @@
+config:
+  aws:region: us-east-1
+  # Uses the same named profile the CLI/tests use. In CI, unset this and rely on
+  # the ambient credential chain (env vars / OIDC).
+  aws:profile: docpipe
+  docpipe:namePrefix: docpipe-dev
+  # Aurora (Phase 5b pgvector benchmark) stays off — min_acu=0 anyway when on.
+  docpipe:enableAurora: "false"
+  docpipe:bedrockModelId: us.deepseek.r1-v1:0
+encryptionsalt: v1:mtI+hMM57tE=:v1:9uv7mL2rGJ0t/wfB:HuANWt7hNDBqzvonrj7OPdUVbnAqnA==
