@@ -75,7 +75,7 @@ class PlannedDoc(BaseModel):
     action: SyncAction
     # True for a `<file>.metadata.json` companion. It is not a document in its
     # own right — it produces no vector — so callers list documents and count
-    # sidecars separately rather than reporting 570 "docs" for a 285-doc corpus.
+    # sidecars separately rather than reporting 766 "docs" for a 383-doc corpus.
     sidecar: bool = False
 
 

@@ -7,7 +7,7 @@ vector, and they come back on each retrieval result — so a passage knows its
 document title, its section, and **how well evidenced it is**.
 
 Why the grading matters here. The corpus is deliberately honest about its own
-weak spots: of 285 chunks, 99 are ``maxEvidence: 0`` and 180 carry no citation
+weak spots: of 383 chunks, 97 are ``maxEvidence: 0`` and 172 carry no citation
 at all. Framing prose and conceptual models are not errors, but they retrieve
 identically to a systematic review unless something separates them. Two hooks
 do that: ``RetrievedPassage.max_evidence`` (so a reply can say which it is) and
