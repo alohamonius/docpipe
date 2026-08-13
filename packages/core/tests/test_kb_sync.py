@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +50,21 @@ def make_corpus(root: Path) -> None:
     (root / "anatomy" / "hamstrings.md").write_text("Hamstrings cross two joints.\n")
     (root / "index.md").write_text("# Corpus\n")
     (root / "notes.txt").write_text("ignored, not markdown\n")  # non-.md is skipped
+
+
+def sidecar_for(doc: Path, max_evidence: int = 3) -> Path:
+    """Write the `<doc>.metadata.json` companion Bedrock reads alongside `doc`."""
+    path = doc.with_name(doc.name + ".metadata.json")
+    attributes = {
+        "metadataAttributes": {
+            "maxEvidence": {
+                "value": {"type": "NUMBER", "numberValue": max_evidence},
+                "includeForEmbedding": False,
+            }
+        }
+    }
+    path.write_text(json.dumps(attributes))
+    return path
 
 
 def syncer(s3_client: Any, agent: Any) -> CorpusSyncer:
@@ -162,3 +178,49 @@ def test_start_ingestion_false_uploads_but_never_touches_agent(tmp_path: Path, s
 def test_sync_rejects_missing_root(tmp_path: Path, s3_bucket) -> None:
     with pytest.raises(ValueError, match="not a directory"):
         syncer(s3_bucket, FakeAgent([])).sync(tmp_path / "nope")
+
+
+# ── Metadata sidecars ──────────────────────────────────────────────────────
+# Bedrock reads `<file>.metadata.json` next to `<file>` and attaches its
+# attributes to every vector from that file. Dropping them silently costs
+# retrieval-time evidence filtering and named citations, so they are pinned.
+
+
+def test_sidecar_uploads_with_its_document(tmp_path: Path, s3_bucket) -> None:
+    make_corpus(tmp_path)
+    sidecar_for(tmp_path / "index.md")
+
+    report = syncer(s3_bucket, FakeAgent(["STARTING"])).sync(tmp_path, start_ingestion=False)
+
+    assert [d.key for d in report.sidecars] == ["corpus/index.md.metadata.json"]
+    # Documents stay countable on their own — a sidecar is not a document.
+    assert [d.key for d in report.documents] == ["corpus/anatomy/hamstrings.md", "corpus/index.md"]
+    stored = s3_bucket.get_object(Bucket=BUCKET, Key="corpus/index.md.metadata.json")
+    assert json.loads(stored["Body"].read())["metadataAttributes"]["maxEvidence"]
+    assert stored["ContentType"] == "application/json"
+
+
+def test_orphan_sidecar_is_ignored(tmp_path: Path) -> None:
+    make_corpus(tmp_path)
+    # No `ghost.md` — this sidecar describes a document that does not exist.
+    (tmp_path / "ghost.md.metadata.json").write_text("{}")
+
+    assert [p.name for p in discover_corpus(tmp_path)] == ["hamstrings.md", "index.md"]
+
+
+def test_sidecar_only_edit_still_reuploads(tmp_path: Path, s3_bucket) -> None:
+    make_corpus(tmp_path)
+    sidecar = sidecar_for(tmp_path / "index.md", max_evidence=3)
+    syncer(s3_bucket, FakeAgent([])).sync(tmp_path, start_ingestion=False)
+
+    # Regrade the chunk without touching a byte of its prose. If change
+    # detection only watched the .md, this edit would never reach Bedrock and
+    # an evidence filter would silently act on the old grade.
+    sidecar_for(tmp_path / "index.md", max_evidence=1)
+    second = syncer(s3_bucket, FakeAgent([])).sync(tmp_path, start_ingestion=False)
+
+    assert [d.key for d in second.uploaded] == ["corpus/index.md.metadata.json"]
+    assert [d.key for d in second.skipped] == ["corpus/anatomy/hamstrings.md", "corpus/index.md"]
+    # The new grade really replaced the old one in S3.
+    stored = s3_bucket.get_object(Bucket=BUCKET, Key="corpus/index.md.metadata.json")
+    assert stored["Body"].read().decode() == sidecar.read_text()

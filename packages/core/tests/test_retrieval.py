@@ -75,3 +75,69 @@ def test_chat_without_passages_keeps_plain_system() -> None:
     fake = FakeBedrock([converse_response("ok")])
     ChatClient(bedrock_client=fake).reply([ChatMessage(role="user", content="hi")])
     assert fake.calls[0]["system"] == [{"text": HEALTH_ASSISTANT_SYSTEM}]
+
+
+# ── Sidecar metadata ───────────────────────────────────────────────────────
+# health.studio stamps every chunk with its evidence grade. These pin that the
+# grade survives the trip back, because the whole point of the corpus being
+# honest about its weak claims is lost if retrieval discards the labels.
+
+SIDECAR = {
+    "docTitle": "Pain Science",
+    "section": "Central sensitization",
+    "sourcePath": "docs/anatomy/12-pain-science.md",
+    "maxEvidence": 3,
+    "verification": ["VERIFIED"],
+    "citationCount": 14,
+    "safetyCritical": False,
+}
+
+
+def test_sidecar_attributes_land_on_the_passage() -> None:
+    fake = FakeAgentRuntime([{"content": {"text": "Pain is not damage."}, "metadata": SIDECAR}])
+
+    passage = KnowledgeBaseClient("kb-123", agent_runtime_client=fake).retrieve("pain")[0]
+
+    assert passage.doc_title == "Pain Science"
+    assert passage.section == "Central sensitization"
+    assert passage.max_evidence == 3
+    assert passage.verification == ["VERIFIED"]
+    assert passage.citation_count == 14
+    assert passage.safety_critical is False
+    assert passage.citation == "Pain Science → Central sensitization (★★★)"
+
+
+def test_passage_without_sidecar_degrades_to_none_not_error() -> None:
+    """A corpus synced before sidecars existed must still retrieve."""
+    fake = FakeAgentRuntime([kb_result("bare text", "s3://kb/doc.md")])
+
+    passage = KnowledgeBaseClient("kb-123", agent_runtime_client=fake).retrieve("q")[0]
+
+    assert passage.max_evidence is None
+    assert passage.doc_title is None
+    assert passage.citation == "s3://kb/doc.md"
+
+
+def test_min_evidence_becomes_a_bedrock_filter() -> None:
+    fake = FakeAgentRuntime([])
+    KnowledgeBaseClient("kb-123", agent_runtime_client=fake).retrieve("q", min_evidence=1)
+
+    search = fake.calls[0]["retrievalConfiguration"]["vectorSearchConfiguration"]
+    assert search["filter"] == {"greaterThanOrEquals": {"key": "maxEvidence", "value": 1}}
+
+
+def test_no_filter_is_sent_by_default() -> None:
+    """Default is unfiltered — nothing disappears unless a caller asks."""
+    fake = FakeAgentRuntime([])
+    KnowledgeBaseClient("kb-123", agent_runtime_client=fake).retrieve("q")
+
+    assert "filter" not in fake.calls[0]["retrievalConfiguration"]["vectorSearchConfiguration"]
+
+
+def test_safety_critical_true_does_not_read_as_evidence_one() -> None:
+    """bool is an int subclass — a naive coercion turns True into ★☆☆."""
+    fake = FakeAgentRuntime([{"content": {"text": "red flags"}, "metadata": {"maxEvidence": True}}])
+
+    passage = KnowledgeBaseClient("kb-123", agent_runtime_client=fake).retrieve("q")[0]
+
+    assert passage.max_evidence is None

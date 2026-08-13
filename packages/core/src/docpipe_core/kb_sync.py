@@ -21,6 +21,10 @@ knowing:
   * **Ingestion is incremental on Bedrock's side.** `StartIngestionJob`
     re-embeds only added/changed/deleted documents, so re-running after editing
     one doc is cheap — you don't pay to re-embed the whole corpus.
+  * **Metadata sidecars ride along.** A `<file>.md.metadata.json` next to a
+    document is uploaded with it, and Bedrock attaches its attributes to every
+    vector from that document. That is what makes `min_evidence` filtering and
+    named citations possible downstream (see `retrieval.py`).
 """
 
 from __future__ import annotations
@@ -40,6 +44,13 @@ from docpipe_core.observability import get_logger
 
 DEFAULT_PREFIX = "corpus/"
 _MARKDOWN_CONTENT_TYPE = "text/markdown"
+_JSON_CONTENT_TYPE = "application/json"
+
+# Bedrock's S3 data source attaches `<file>.metadata.json` to every vector it
+# derives from `<file>`. health.studio ships one per chunk (docTitle, section,
+# maxEvidence, verification, citationCount, safetyCritical, …) — without them
+# there is no retrieval-time filtering and a citation is a bare S3 URI.
+_SIDECAR_SUFFIX = ".metadata.json"
 
 # Bedrock ingestion-job lifecycle: STARTING → IN_PROGRESS → one of these.
 _TERMINAL_STATUSES = frozenset({"COMPLETE", "FAILED", "STOPPED"})
@@ -62,6 +73,10 @@ class PlannedDoc(BaseModel):
     digest: str  # MD5 hex of the local bytes
     size: int
     action: SyncAction
+    # True for a `<file>.metadata.json` companion. It is not a document in its
+    # own right — it produces no vector — so callers list documents and count
+    # sidecars separately rather than reporting 570 "docs" for a 285-doc corpus.
+    sidecar: bool = False
 
 
 class IngestionOutcome(BaseModel):
@@ -88,10 +103,36 @@ class SyncReport(BaseModel):
     def skipped(self) -> list[PlannedDoc]:
         return [d for d in self.docs if d.action is SyncAction.SKIPPED]
 
+    @property
+    def documents(self) -> list[PlannedDoc]:
+        """Everything that becomes a vector — i.e. excluding metadata sidecars."""
+        return [d for d in self.docs if not d.sidecar]
+
+    @property
+    def sidecars(self) -> list[PlannedDoc]:
+        return [d for d in self.docs if d.sidecar]
+
 
 def discover_corpus(root: Path) -> list[Path]:
-    """Every ``*.md`` under ``root``, sorted for deterministic keys/logs."""
-    return sorted(p for p in root.rglob("*.md") if p.is_file())
+    """Every ``*.md`` under ``root``, plus each one's metadata sidecar.
+
+    A sidecar is only collected when its ``.md`` is itself in the corpus: an
+    orphan ``foo.md.metadata.json`` with no ``foo.md`` describes nothing, and
+    uploading it would leave a file in the bucket that no ingestion ever reads.
+    Sorted so keys and logs are deterministic.
+    """
+    docs = sorted(p for p in root.rglob("*.md") if p.is_file())
+    found: list[Path] = []
+    for doc in docs:
+        found.append(doc)
+        sidecar = doc.with_name(doc.name + _SIDECAR_SUFFIX)
+        if sidecar.is_file():
+            found.append(sidecar)
+    return found
+
+
+def is_sidecar(path: Path) -> bool:
+    return path.name.endswith(_SIDECAR_SUFFIX)
 
 
 def _digest(data: bytes) -> str:
@@ -136,7 +177,14 @@ class CorpusSyncer:
                 SyncAction.SKIPPED if self._matches_remote(key, digest) else SyncAction.UPLOADED
             )
             planned.append(
-                PlannedDoc(path=str(path), key=key, digest=digest, size=len(data), action=action)
+                PlannedDoc(
+                    path=str(path),
+                    key=key,
+                    digest=digest,
+                    size=len(data),
+                    action=action,
+                    sidecar=is_sidecar(path),
+                )
             )
         return planned
 
@@ -173,7 +221,7 @@ class CorpusSyncer:
                     Bucket=self.bucket,
                     Key=doc.key,
                     Body=Path(doc.path).read_bytes(),
-                    ContentType=_MARKDOWN_CONTENT_TYPE,
+                    ContentType=(_JSON_CONTENT_TYPE if doc.sidecar else _MARKDOWN_CONTENT_TYPE),
                 )
         self._log.info(
             "corpus uploaded",
@@ -182,6 +230,7 @@ class CorpusSyncer:
                     "bucket": self.bucket,
                     "uploaded": len([d for d in planned if d.action is SyncAction.UPLOADED]),
                     "skipped": len([d for d in planned if d.action is SyncAction.SKIPPED]),
+                    "sidecars": len([d for d in planned if d.sidecar]),
                 }
             },
         )
