@@ -340,3 +340,50 @@ Two things, both measured against `build/kb/` from a clean `pnpm kb:build` on
   is live in AWS — a console edit to the data source would pass. Detecting that
   needs a `describe_data_source` check against the deployed stack, which is not
   written.
+
+## 2026-08-14 — the app stays on Hetzner, and the VPC is not the seam
+
+Asked whether the whole system could move onto AWS, since running the Next.js
+app on Hetzner and the AI backend on AWS felt like an arbitrary split. It can.
+It should not, and the reason is arithmetic.
+
+- **AWS compute is ~3–5× Hetzner for the same box.** The app is `flowforge` on
+  **taro** (shared Hetzner CAX11 ARM, port 3333 → 3000, alongside starogram :80
+  and themeltemi :8080/:8443 — see `~/git-public/hustling/INFRA.md`). Its
+  marginal cost is a fraction of one €4–7 box. The nearest EC2 equivalent
+  (`t4g.small`/`t4g.medium` + EBS) is ~$15–27/mo, and **moving off taro would
+  not retire taro** — two other tenants stay. Pure added spend, not a swap.
+- **Joining a rented box to the VPC is possible, and the managed forms are
+  priced for someone else.** List prices, us-east-1, verify before committing:
+  Site-to-Site VPN ~$0.05/hr ≈ **$36/mo** per connection plus data; a Transit
+  Gateway attachment the same; a Client VPN endpoint ~$0.10/hr ≈ $73/mo. Each
+  costs several times the server it would connect. The versions that fit the
+  budget are **WireGuard on a `t4g.nano` in the VPC (~$3–4/mo)** or a
+  **Tailscale subnet router (free tier)**.
+- **None of it is needed, because the VPC is not the seam.** Everything docpipe
+  exposes — API Gateway, Bedrock, DynamoDB, S3, SQS — is a public endpoint
+  behind IAM auth. The only genuinely private tenant is Aurora, and the app does
+  not talk to Aurora: **Bedrock** does. The app's own Postgres is its own DB.
+  So the integration is **HTTPS + SigV4 to API Gateway** — no tunnel, no NAT
+  (docpipe deliberately has none, ~$33/mo), $0 of networking.
+- **The seam does not exist yet.** `pulumi/__main__.py` wires network, data,
+  messaging, kb, iam, safety — 53 resources, and **no Lambda and no API
+  Gateway**; the only Lambda artifact is an exported role ARN. So this is a
+  choice about a thing not yet built, not a migration.
+- **The one real cost of the split is latency, and AWS is not its fix.**
+  us-east-1 is Northern Virginia; taro is in the EU, so every retrieval and
+  generate call pays ~90–110ms each way. A VPN makes that *worse* — same path,
+  plus IPsec. The fix at Hetzner prices is **Hetzner's Ashburn location**, same
+  metro as us-east-1, ~1–5ms. Caveat: `CAX` (Ampere ARM) is EU-only, so a US box
+  is x86. The app's `Dockerfile` is `node:22-alpine` with **no platform pin**,
+  and neither `docker-compose.prod.yml` nor `.github/workflows/deploy.yml` pins
+  an architecture, so it rebuilds for amd64 unchanged.
+
+**Decision (2026-08-14, the human's):** the app stays on Hetzner. A second
+Hetzner server comes later rather than an EC2 host. Do not reopen "move the app
+to AWS" without new numbers — and note that the latency argument is answered by
+a Hetzner region change, not by a cloud change.
+
+**Explicit non-decision:** this is about *hosting*, not about model access. The
+app calls the Anthropic API directly while docpipe uses Bedrock. That split is
+untouched here and should be decided on its own merits.
