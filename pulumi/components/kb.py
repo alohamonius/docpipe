@@ -1,7 +1,10 @@
 """Knowledge Base grounding: S3 Vectors store + Bedrock KB (Titan embeddings).
 
-Pipeline: corpus markdown → KB source S3 bucket → Bedrock chunks + embeds with
+Pipeline: corpus markdown → KB source S3 bucket → Bedrock embeds each file with
 Titan v2 → vectors land in the S3 Vectors index that retrieval queries.
+
+Chunking is deliberately **disabled** (`NONE`) — the corpus is already chunk-final
+when it arrives. See the comment on the data source below.
 
 The embedding dimension is pinned to the SAME value in both the S3 Vectors index
 AND the KB's embedding config — Titan v2 can emit 256/512/1024 and mixing them
@@ -32,8 +35,6 @@ class KnowledgeBase(pulumi.ComponentResource):
         *,
         embedding_model_id: str = "amazon.titan-embed-text-v2:0",
         embedding_dimension: int = 1024,
-        chunk_max_tokens: int = 500,
-        chunk_overlap_percentage: int = 20,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         super().__init__("docpipe:kb:KnowledgeBase", prefix, None, opts)
@@ -171,15 +172,16 @@ class KnowledgeBase(pulumi.ComponentResource):
                 "type": "S3",
                 "s3_configuration": {"bucket_arn": source.arn},
             },
-            # ~500-token chunks, 20% overlap — sized so a fact isn't split mid-sentence.
+            # NONE = one chunk per file. NOT a default we fell into — the corpus
+            # arrives pre-chunked from health.studio's `pnpm kb:build`, where each
+            # file is already one retrievable unit carrying its own evidence legend
+            # (the ★ scale + "not a diagnosis" disclaimer, in a header block).
+            # Any splitter — FIXED_SIZE, SEMANTIC, HIERARCHICAL — cuts that header
+            # off every fragment after the first, and the model then sees bare star
+            # ratings with no scale attached. See build-kb.ts and the MANIFEST's
+            # `ingestion.note` in the health.studio repo.
             vector_ingestion_configuration={
-                "chunking_configuration": {
-                    "chunking_strategy": "FIXED_SIZE",
-                    "fixed_size_chunking_configuration": {
-                        "max_tokens": chunk_max_tokens,
-                        "overlap_percentage": chunk_overlap_percentage,
-                    },
-                }
+                "chunking_configuration": {"chunking_strategy": "NONE"}
             },
             opts=me,
         )
