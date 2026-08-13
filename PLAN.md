@@ -25,6 +25,16 @@ content) via Bedrock Knowledge Bases, with citations.
   no inference profile). **R1 (`us.deepseek.r1-v1:0`) stays for async
   summaries** — it has no tool use. Fallback if v3.2 disappoints on tool use:
   the Claude 5 family is available in-account, all `INFERENCE_PROFILE` only.
+- **DeepSeek only — one family, two models, locked 2026-08-14 (the human's).**
+  Z.AI's GLM was evaluated against the same bar and dropped: `zai.glm-5`,
+  `zai.glm-4.7` and `zai.glm-4.7-flash` are all live and ON_DEMAND in-account,
+  all three pass tool use via Converse, and flash is ~9× cheaper on input than
+  `deepseek.v3.2` (FINDINGS.md, 2026-08-14). It was rejected anyway, to keep one
+  model family rather than to win a price comparison. Two consequences:
+  a free/pro split by model is off the table (R1 has no tool use, so DeepSeek
+  offers no cheap chat sibling) — tier on `top_k`, `min_evidence` and quota
+  instead; and the IAM allowlist names its two models rather than matching
+  `deepseek*`, so adding one is a reviewed change.
 - **Embedding model = `amazon.titan-embed-text-v2:0` @ 1024 dims — FORCED, not
   preferred.** Bedrock KB **rejects `cohere.embed-v4:0`** under every storage
   type (measured, FINDINGS.md), and the only other supported family — Cohere

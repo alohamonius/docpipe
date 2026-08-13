@@ -76,12 +76,16 @@ class _ConverseClient:
         max_retries: int = 3,
         sleep: Callable[[float], None] = time.sleep,
         max_tokens: int | None = None,
+        guardrail_id: str | None = None,
+        guardrail_version: str = "DRAFT",
     ) -> None:
         self.model_id = model_id
         self._bedrock = bedrock_client or boto3.client("bedrock-runtime")
         self._max_retries = max_retries
         self._sleep = sleep
         self._max_tokens = max_tokens if max_tokens is not None else self.DEFAULT_MAX_TOKENS
+        self._guardrail_id = guardrail_id
+        self._guardrail_version = guardrail_version
 
     def _converse(
         self, messages: list[dict[str, Any]], system: str | None = None
@@ -93,6 +97,16 @@ class _ConverseClient:
         }
         if system is not None:
             kwargs["system"] = [{"text": system}]
+        # A provisioned guardrail enforces nothing on its own — it applies only
+        # to calls that name it. Absent this block the Bedrock Guardrail in
+        # `pulumi/components/safety.py` is decoration, and the non-diagnostic
+        # stance rests entirely on a system prompt that prompt injection can
+        # argue with. The role needs `bedrock:ApplyGuardrail` on the ARN.
+        if self._guardrail_id:
+            kwargs["guardrailConfig"] = {
+                "guardrailIdentifier": self._guardrail_id,
+                "guardrailVersion": self._guardrail_version,
+            }
 
         last_error: ClientError | None = None
         for attempt in range(self._max_retries + 1):
@@ -138,6 +152,7 @@ class ChatClient(_ConverseClient):
             input_tokens=usage.get("inputTokens", 0),
             output_tokens=usage.get("outputTokens", 0),
             latency_ms=latency_ms,
+            guardrail_intervened=response.get("stopReason") == "guardrail_intervened",
         )
 
 

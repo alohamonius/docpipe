@@ -21,22 +21,33 @@ class Iam(pulumi.ComponentResource):
         account_id: str,
         region: str,
         bedrock_model_id: str,
+        chat_model_id: str,
         *,
         documents_bucket_arn: pulumi.Input[str],
         jobs_table_arn: pulumi.Input[str],
         conversations_table_arn: pulumi.Input[str],
         queue_arn: pulumi.Input[str],
         knowledge_base_arn: pulumi.Input[str],
+        guardrail_arn: pulumi.Input[str],
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         super().__init__("docpipe:iam:Iam", prefix, None, opts)
         me = pulumi.ResourceOptions(parent=self)
 
-        # Invoking a cross-region inference profile needs permission on BOTH the
-        # profile ARN and the underlying foundation-model ARNs (region wildcard).
+        # Two DeepSeek models, named rather than prefix-matched. This was
+        # `foundation-model/deepseek*`, which silently grants every future
+        # DeepSeek model the account gains — including ones nobody evaluated.
+        # Naming them means adding a model is a reviewed policy change.
+        #
+        # The summary model is INFERENCE_PROFILE-only, and invoking a
+        # cross-region profile needs permission on BOTH the profile ARN and its
+        # backing foundation models, which genuinely do span regions — hence the
+        # region wildcard on that entry alone. Chat is ON_DEMAND in-region, so
+        # it gets neither a profile nor a wildcard.
         invoke_resources = [
             f"arn:aws:bedrock:{region}:{account_id}:inference-profile/{bedrock_model_id}",
-            "arn:aws:bedrock:*::foundation-model/deepseek*",
+            f"arn:aws:bedrock:*::foundation-model/{bedrock_model_id.removeprefix('us.')}",
+            f"arn:aws:bedrock:{region}::foundation-model/{chat_model_id}",
         ]
 
         self.lambda_role = aws.iam.Role(
@@ -120,6 +131,16 @@ class Iam(pulumi.ComponentResource):
                             ],
                             "Resource": invoke_resources,
                         },
+                        {
+                            # Required by the `guardrailConfig` block in
+                            # `llm.py::_ConverseClient._converse`. Without it
+                            # every chat call fails AccessDenied — the guardrail
+                            # and this statement ship together or not at all.
+                            "Sid": "ApplyGuardrail",
+                            "Effect": "Allow",
+                            "Action": "bedrock:ApplyGuardrail",
+                            "Resource": guardrail_arn,
+                        },
                     ],
                 }
             ),
@@ -171,6 +192,18 @@ class Iam(pulumi.ComponentResource):
                                 "bedrock:InvokeModelWithResponseStream",
                             ],
                             "Resource": invoke_resources,
+                        },
+                        {
+                            # Granted here too, though the worker does not pass
+                            # `guardrailConfig` today: `SummarizerClient` shares
+                            # `_ConverseClient`, so enabling it there is a
+                            # one-argument change, and it summarizes documents
+                            # the user uploaded — a higher injection surface
+                            # than chat, not a lower one.
+                            "Sid": "ApplyGuardrail",
+                            "Effect": "Allow",
+                            "Action": "bedrock:ApplyGuardrail",
+                            "Resource": guardrail_arn,
                         },
                     ],
                 }

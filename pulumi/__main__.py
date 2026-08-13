@@ -13,7 +13,12 @@ import pulumi
 cfg = pulumi.Config()
 prefix = cfg.get("namePrefix") or "docpipe-dev"
 enable_aurora = cfg.get_bool("enableAurora") or False
+# Two models, both DeepSeek (locked 2026-08-14, see PLAN.md). The summary model
+# is INFERENCE_PROFILE-only; the chat model is ON_DEMAND. They were one config
+# value, which meant the chat statement carried the summariser's profile ARN and
+# worked only because a `deepseek*` wildcard happened to cover it.
 bedrock_model_id = cfg.get("bedrockModelId") or "us.deepseek.r1-v1:0"
+chat_model_id = cfg.get("chatModelId") or "deepseek.v3.2"
 
 # get_* invokes resolve synchronously to plain values (not Outputs).
 ident = aws.get_caller_identity()
@@ -31,18 +36,21 @@ data = Data(
 )
 messaging = Messaging(prefix)
 kb = KnowledgeBase(prefix, ident.account_id, region)
+# Safety before Iam: the roles need the guardrail ARN to grant ApplyGuardrail.
+safety = Safety(prefix, ident.account_id, region)
 iam = Iam(
     prefix,
     ident.account_id,
     region,
     bedrock_model_id,
+    chat_model_id,
     documents_bucket_arn=data.documents_bucket_arn,
     jobs_table_arn=data.jobs_table_arn,
     conversations_table_arn=data.conversations_table_arn,
     queue_arn=messaging.queue_arn,
     knowledge_base_arn=kb.knowledge_base_arn,
+    guardrail_arn=safety.guardrail_arn,
 )
-safety = Safety(prefix, ident.account_id, region)
 
 # --- exports → .env (see /.env.example) ---
 pulumi.export("documents_bucket", data.documents_bucket)
@@ -54,6 +62,7 @@ pulumi.export("kb_source_bucket", kb.source_bucket)
 pulumi.export("kb_data_source_id", kb.data_source_id)
 pulumi.export("guardrail_id", safety.guardrail_id)
 pulumi.export("guardrail_version", safety.guardrail_version)
+pulumi.export("chat_model_id", chat_model_id)
 pulumi.export("lambda_role_arn", iam.lambda_role_arn)
 pulumi.export("worker_policy_arn", iam.worker_policy_arn)
 pulumi.export("vpc_id", network.vpc.id)

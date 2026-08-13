@@ -44,6 +44,11 @@ class ChatReply(BaseModel):
     input_tokens: int
     output_tokens: int
     latency_ms: int
+    # True when the Bedrock guardrail replaced the model's answer with its own
+    # blocked message. The caller still gets readable text, so without this flag
+    # an intervention is indistinguishable from a normal reply — and a safety
+    # control nobody can count is a safety control nobody can tune.
+    guardrail_intervened: bool = False
 
 
 class Job(BaseModel):

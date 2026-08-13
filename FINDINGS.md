@@ -387,3 +387,48 @@ a Hetzner region change, not by a cloud change.
 **Explicit non-decision:** this is about *hosting*, not about model access. The
 app calls the Anthropic API directly while docpipe uses Bedrock. That split is
 untouched here and should be decided on its own merits.
+
+## 2026-08-14 — the guardrail was decoration, and GLM lost on grounds other than the numbers
+
+- **A provisioned Bedrock guardrail enforces nothing.** `safety.py` created one
+  and computed `self.guardrail_arn`; **nothing read it** — not exported in
+  `__main__.py`, not referenced in `iam.py`, and `llm.py::_converse` passed no
+  `guardrailConfig`. So the non-diagnostic stance rested entirely on a system
+  prompt, which prompt injection can argue with. `scripts/status.py:181` already
+  instrumented this (`guardrail_enforced()` greps the source for the parameter)
+  and was correctly reporting **false**. Now wired: `guardrailConfig` on every
+  Converse call, `bedrock:ApplyGuardrail` on both roles, and the flag reads true.
+- **The permission and the parameter must ship together.** Adding
+  `guardrailConfig` without `bedrock:ApplyGuardrail` fails every chat call with
+  AccessDenied; adding the permission without the parameter changes nothing.
+  Half of this diff is inert without the other half — which is why it is one
+  commit and not two.
+- **An intervention was indistinguishable from an answer.** Bedrock replaces the
+  model's output with the guardrail's blocked message and returns
+  `stopReason: "guardrail_intervened"` — readable text, HTTP 200. Without
+  surfacing it, a blocked reply and a real one look identical to the caller and
+  the intervention rate is unmeasurable. `ChatReply.guardrail_intervened` now
+  carries it.
+- **`foundation-model/deepseek*` granted every future DeepSeek model**, including
+  ones nobody has evaluated. Replaced with the two we actually invoke. Also split
+  `bedrockModelId` into chat + summary config: one value fed both policies, so
+  the `InvokeChatModel` statement carried the **summariser's** inference-profile
+  ARN and worked only because the wildcard happened to cover the chat model.
+  Correct by accident is not correct.
+- **GLM is real, cheap, and was rejected anyway.** Measured 2026-08-14 in-account,
+  us-east-1: `zai.glm-5`, `zai.glm-4.7`, `zai.glm-4.7-flash` all `ON_DEMAND`, all
+  three returned `stopReason=tool_use` on a one-tool Converse probe. Price List
+  API, standard on-demand $/1M in-out: **glm-4.7-flash 0.07 / 0.40**, glm-4.7
+  0.60 / 2.20, **deepseek.v3.2 0.62 / 1.85** — flash is ~9× cheaper on input,
+  ~4.6× on output. `zai.glm-5` is invocable but has **zero rows in the us-east-1
+  price list**, so it cannot be budgeted. The ruling was one model family over a
+  cheaper second one; recorded here because the measurement stays true whichever
+  way the decision went, and re-measuring costs another hour.
+- **Lambda bills the model's thinking time, and it barely matters.** Per 1M chat
+  turns at ~3,000 in / 400 out and 8s on 512 MB: Lambda duration ≈ **$67**, HTTP
+  API ≈ $1, REST API ≈ $3.50 — against ≈ **$2,600** of `deepseek.v3.2` tokens.
+  Think-time is ~2.5% of the bill; **input tokens are ~70%**, so `top_k` is a
+  larger cost lever than anything in the compute layer. The binding constraint is
+  not cost but the API Gateway integration timeout (HTTP API caps at 30s, not
+  raisable) and the fact that neither API Gateway integration streams — a
+  token-by-token UI needs a Lambda Function URL with `RESPONSE_STREAM`.
