@@ -10,18 +10,37 @@ SQS, Pulumi).
 **Two product pillars:** everything is **per-user** (opaque IDs from the app,
 DynamoDB keyed `userId` + `conversationId`/`jobId`), and chat is **grounded in
 the health.studio knowledge base** (public, evidence-graded anatomy/exercise
-content) via Bedrock Knowledge Bases + S3 Vectors, with citations.
+content) via Bedrock Knowledge Bases, with citations.
 
-**Locked decisions (2026-08-13):**
+**Locked decisions (2026-08-13, revised after the verification pass):**
 - **IaC = Pulumi (Python)** — the Terraform tree was ported and deleted.
 - **Agent = Strands Agents SDK running in the API Lambda.** Bedrock Agents
-  Classic is closed to new customers (see FINDINGS.md); AgentCore is the
-  managed alternative but is heavier than chat needs — Strands code can move
-  into AgentCore Runtime later without a rewrite.
+  Classic is closed to new customers (see FINDINGS.md). The stronger argument is
+  licensing, not availability: **Strands is Apache-2.0 and runs anywhere;
+  AgentCore is a closed AWS-only managed service.** AgentCore Harness (GA
+  2026-06-18) exports to Strands code with one CLI command, so this is not a
+  one-way door. At our shape — one tool, one model, a guardrail on every call —
+  Harness would manage complexity we do not have.
 - **Agent model = `deepseek.v3.2`** (tool use via Converse verified, ON_DEMAND,
   no inference profile). **R1 (`us.deepseek.r1-v1:0`) stays for async
-  summaries** — it has no tool use.
-- KB corpus location: TBD — collector agents are still gathering content.
+  summaries** — it has no tool use. Fallback if v3.2 disappoints on tool use:
+  the Claude 5 family is available in-account, all `INFERENCE_PROFILE` only.
+- **Embedding model = `amazon.titan-embed-text-v2:0` @ 1024 dims — FORCED, not
+  preferred.** Bedrock KB **rejects `cohere.embed-v4:0`** under every storage
+  type (measured, FINDINGS.md), and the only other supported family — Cohere
+  Embed v3 — caps input at 512 tokens against a corpus at p90 ≈ 2,200 tokens.
+  Titan v2's 8,192 is the only fit. Do not reopen without re-measuring.
+- **Vector store = Aurora PostgreSQL + pgvector as primary; S3 Vectors retained
+  as a second KB over the same source bucket.** `min_capacity = 0` **is**
+  supported by Bedrock KB (ACU 0–16), so scale-to-zero survives; the ~15s resume
+  is accepted and hidden by pre-warming on chat-UI open. Two KBs make Phase 5b a
+  config flip (`retrieval.py` already takes `knowledge_base_id`) and double as a
+  rollback path. S3 Vectors idles at ~$0, so keeping it costs nothing.
+- **KB corpus = `health.studio/build/kb/`**, produced by `pnpm kb:build` — **383
+  chunk-final files + 383 `.metadata.json` sidecars** (192 prose from 20 docs,
+  191 graph; 1,686,867 B). **Not `docs/`**: that tree holds files health.studio's
+  corpus policy excludes, one of them for a safety reason. Because the corpus is
+  chunk-final, the data source runs `chunkingStrategy: NONE` — see FINDINGS.md.
 
 ## Phase 0 — Init & setup ✅
 
@@ -72,17 +91,86 @@ guardrail `pjpeeu9hf68a`, invocation logging active. Gotchas in FINDINGS.md.
       `enable_aurora` (default false) so the cheap chat path can apply alone**
 - [x] `kb` module: KB source S3 bucket, Bedrock Knowledge Base (Titan
       embeddings) backed by **S3 Vectors** (cheap, serverless — not OpenSearch)
+- [ ] **Aurora gaps found 2026-08-13, required before it can back a KB:**
+      `enable_http_endpoint` (RDS Data API) is **not set** in `data.py`; a
+      dedicated `bedrock_user` role + its own Secrets Manager secret is needed
+      (the current `manage_master_user_password` is the *master* secret); and
+      the `bedrock_integration.bedrock_kb` table + **three** indexes (HNSW
+      `ef_construction=256`, GIN on `to_tsvector`, GIN on `custom_metadata`)
+      must be bootstrapped — Pulumi will not create them. Schema in FINDINGS.md.
+- [ ] **Untracked resource:** Managed KB `XHWRWMWMIQ`
+      (`knowledge-base-quick-start-nxl5n`, created 2026-08-04 via console Quick
+      Create) is live and outside Pulumi state — `make infra-down` will not
+      remove it. Keep as a Managed-KB comparison point, or delete.
 - [x] `messaging` module: SQS queue + DLQ + redrive policy
 - [x] Remote state: self-managed S3 backend (`pulumi login s3://…?region=…`)
 - [x] `make infra-preview` / `infra-up` / `infra-down` for the dev stack
 
 ## Phase 3 — API service (Lambda + API Gateway) — the agent ships here
 
-- [x] KB content sync: `docpipe_core.kb_sync.CorpusSyncer` (walk `*.md` →
-      upload to KB source S3, incremental by content-MD5/ETag → `StartIngestion
-      Job` + poll) with a thin CLI at `services/kb_sync/sync.py` (flags → env →
-      `terraform output` resolution, `--dry-run`/`--no-ingest`/`--no-wait`).
-      8 unit tests (moto S3 + fake bedrock-agent), mypy/ruff clean.
+### Pre-flight — ordered, and all of it is free only while the KB is empty
+
+The source bucket holds **0 objects** and the KB has run **0 ingestion jobs**, so
+every corpus-shape decision is still reversible at zero cost. That stops being
+true after the first ingest. Do these in order:
+
+- [ ] **BLOCKER — deployed config ≠ code.** The live data source `KPAQK6MQY4`
+      still reports `FIXED_SIZE` (500 tokens / 20% overlap); the `NONE` change in
+      `pulumi/components/kb.py` is uncommitted and unapplied. Ingesting now
+      strips the ★ legend and the "not a diagnosis" header off every fragment
+      after the first. Commit → `pulumi up` → **then** sync. Note the `up`
+      **replaces** the data source, so `dataSourceId` changes.
+- [ ] **Split the 19 oversized graph chunks upstream** (health.studio
+      `build-kb.ts`). Measured: prose is healthy (median 264w, max 664w) but
+      graph runs median 652w to **max 3,692w** — one 1024-dim vector per file
+      means a whole organ's referral map gets the same budget as a 107-word
+      overview. Splitting changes filenames → S3 keys, so doing it *after* an
+      ingest creates orphan vectors. Do it first and that problem never exists.
+- [ ] Re-run `--dry-run` to confirm the new distribution, then one ingest.
+
+### Known gaps in the sync path
+
+- [ ] **`CorpusSyncer` never deletes.** `plan()` walks local files and uploads or
+      skips; nothing prunes. Renamed/renumbered chunks leave live vectors that
+      retrieve as current text forever. Bedrock *does* detect S3 deletions — the
+      gap is that we never delete the object. Better fix found since:
+      `ListKnowledgeBaseDocuments` + `DeleteKnowledgeBaseDocuments` (accepts
+      `dataSourceType: S3` + a plain `uri`) let us reconcile at the **KB** level,
+      and `IngestKnowledgeBaseDocuments` pushes a delta without a full-bucket
+      scan. Batch-limited per call — check the cap before building on it.
+- [ ] **No scheduled refresh exists.** Every `bedrock-agent` operation was
+      enumerated: there is no scheduling API. The cadence is ours to build —
+      EventBridge Scheduler → Lambda → `StartIngestionJob`, or trigger from
+      health.studio CI when `pnpm kb:build` output changes. Re-embedding is
+      incremental and the full corpus is ~420k tokens (≈1¢ at Titan v2 rates),
+      so **cost is not a constraint on cadence** — do not design around it.
+
+### Retrieval levers we provision nothing for (all no-reingest)
+
+- [ ] **Reranker** — `cohere.rerank-v3-5:0` is ON_DEMAND in-account and
+      `KnowledgeBaseVectorSearchConfiguration` carries `rerankingConfiguration`.
+      Query-time counter to chunk-size dilution; the only quality lever here that
+      needs no rebuild. Billed per query, not per token. Rate unverified — the
+      Price List API carries no rerank SKU.
+- [ ] **Hybrid search** — `overrideSearchType: HYBRID|SEMANTIC`. Aurora
+      provisions a GIN `to_tsvector` index for exactly this; **unverified whether
+      S3 Vectors supports HYBRID at all.**
+- [ ] **`implicitFilterConfiguration`** — a model derives metadata filters from
+      the query text, using sidecar attributes we already ship.
+
+- [x] KB content sync: `docpipe_core.kb_sync.CorpusSyncer` (walk `*.md` **+ each
+      one's `.metadata.json` sidecar** → upload to KB source S3, incremental by
+      content-MD5/ETag → `StartIngestionJob` + poll) with a thin CLI at
+      `services/kb_sync/sync.py` (flags → env → `pulumi stack output` resolution,
+      `--dry-run`/`--no-ingest`/`--no-wait`). The CLI **refuses** a `--source`
+      that is not a built corpus, and warns when `build/kb` is older than the
+      docs or graph sources it was built from. 11 unit tests (moto S3 + fake
+      bedrock-agent), mypy/ruff clean.
+- [x] Retrieval carries the grades: `RetrievedPassage` exposes `doc_title` /
+      `section` / `max_evidence` / `verification` / `citation_count` /
+      `safety_critical` from the sidecars, plus a `.citation` string; optional
+      `retrieve(min_evidence=…)` pushes an evidence floor into the vector store.
+      Defaults to unfiltered — the caller decides.
 - [ ] **Agent core**: Strands Agents SDK agent on `deepseek.v3.2` — tools:
       `search_kb` (KB retrieve), conversation history; non-diagnostic health
       system prompt; citations required for KB-sourced claims
@@ -146,19 +234,35 @@ cost in the whole design, for an occasional summary job. Options:
       handler for Lambda), reusing `docpipe-core`
 - [ ] End-to-end: POST doc → summary lands in DynamoDB + Aurora
 
-## Phase 5b — Headline deliverable: S3 Vectors vs Aurora pgvector benchmark (proposed)
+## Phase 5b — Headline deliverable: S3 Vectors vs Aurora pgvector benchmark
+
+**No longer "proposed" — it is the architecture.** Two Bedrock KBs over one
+source bucket, differing only in the STORAGE slot. `retrieval.py:70` already
+takes `knowledge_base_id`, so switching between them is config, not code.
 
 Not "I built a RAG pipeline on Bedrock" — instead: **"I benchmarked S3 Vectors
 against Aurora pgvector on the same corpus and golden set — here's retrieval
-latency, cost, and where each wins."** The measured decision *is* the artifact.
+latency, recall, cost, and where each wins."** The measured decision *is* the
+artifact.
 
-- [ ] Ingest the identical health.studio corpus into **both** stores (S3 Vectors
-      index — already built; Aurora pgvector — `enable_aurora` + `vector` column)
+- [ ] Both KBs live over the same `corpus/` prefix; identical Titan v2 @ 1024
 - [ ] Golden set: ~30–50 `question → expected-passage(s)` pairs from the corpus
 - [ ] Measure per store: retrieval **latency** (p50/p95, incl. Aurora cold-start
       after auto-pause), **recall@k / MRR** on the golden set, **$ cost** (at rest
       + per 1k queries)
+- [ ] **The graph only Aurora can produce: sweep `hnsw.ef_search`** (10 / 40 /
+      100 / 200 — a session-level `SET`, no rebuild) and plot recall@4 against
+      p95 latency. S3 Vectors can only ever be one opaque point on that curve.
+      This is the strongest single exhibit in the whole project.
+- [ ] Also cheap and only possible in Aurora: near-duplicate detection across the
+      corpus (`WHERE a.embedding <=> b.embedding < 0.15`) — answers "are my 383
+      chunks actually distinct?", a question the Retrieve API cannot express.
 - [ ] Writeup: a results table + "where each wins" — the README's real headline
+
+**Verified prices (AWS Price List API, us-east-1, 2026-08-13)** so the cost
+column is not guesswork: Serverless v2 **$0.12/ACU-Hr**, storage **$0.10/GB-Mo**,
+backup **$0.021/GB-Mo**, I/O **$0.20 per million**. Note `min_capacity = 0` bills
+**~$0.12/mo, not $0** — ACU billing pauses, storage and backup do not.
 
 ## Phase 6 — Observability & polish
 
