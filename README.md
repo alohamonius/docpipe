@@ -1,5 +1,15 @@
 # docpipe — health.studio AI services on AWS
 
+[![AWS Bedrock](https://img.shields.io/badge/AWS-Bedrock-FF9900?logo=amazonwebservices&logoColor=white)](https://aws.amazon.com/bedrock/)
+[![Pulumi](https://img.shields.io/badge/IaC-Pulumi-8A3391?logo=pulumi&logoColor=white)](https://www.pulumi.com/)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![uv](https://img.shields.io/badge/deps-uv-DE5FE9?logo=uv&logoColor=white)](https://github.com/astral-sh/uv)
+![status: showcase](https://img.shields.io/badge/status-showcase-lightgrey)
+
+> **Public showcase.** Readable end to end on purpose — the Pulumi components,
+> the ingestion pipeline and the retrieval path are all here. No license is
+> attached, so it's *read, don't lift*: all rights reserved.
+
 The AWS-hosted AI backend for [health.studio](https://health.studio): a chat
 assistant and an async document-summarization pipeline, called server-side by
 the health.studio Next.js app (which runs on its own infra). Built on:
@@ -59,6 +69,11 @@ Vectors live in **S3 Vectors** (not OpenSearch Serverless) — serverless and
 near-zero cost at rest, which keeps the whole chat path permanently
 deployable.
 
+This is the KB that exists today. A **second** Knowledge Base over the same
+source bucket, backed by Aurora PostgreSQL + pgvector, is the intended primary
+and is not built yet — the two are the subject of the benchmark that is this
+project's headline deliverable (`PLAN.md`, Phase 5b).
+
 ### 3. Summaries — asynchronous, decoupled by a queue
 
 Training logs / session notes are summarized off the request path, because LLM
@@ -72,7 +87,7 @@ flowchart LR
     S3[("S3<br/>documents")]
     Q["SQS"]
     DLQ["DLQ"]
-    W["EKS worker<br/>docpipe-core"]
+    W["worker — compute TBD<br/>docpipe-core"]
     LLM["Bedrock — DeepSeek"]
     DDB[("DynamoDB<br/>jobs · PK userId")]
     RDS[("Aurora<br/>history")]
@@ -89,10 +104,13 @@ flowchart LR
     App -->|"GET /jobs/{id}"| APIGW -.-> DDB
 ```
 
-The compute split is deliberate: **Lambda** for the spiky request edge,
-**EKS** for the long-running consumer. Everything is per-user (opaque IDs from
-the app; no PII/PHI crosses to AWS), and the chat path can stay up permanently
-while the EKS + Aurora side is torn down between sessions.
+The compute split is deliberate: **Lambda** for the spiky request edge, and a
+separate long-running consumer for the queue. **Which compute backs that
+consumer is still open** — Lambda, Fargate or EKS, with Lambda the current
+recommendation on cost (see [`PLAN.md`](PLAN.md) Phase 5); the diagram shows the
+role, not a decision. Everything is per-user (opaque IDs from the app; no
+PII/PHI crosses to AWS), and the chat path can stay up permanently while the
+worker + Aurora side is torn down between sessions.
 
 ## Health & privacy constraints
 
@@ -147,11 +165,17 @@ failing the run. Both files are gitignored; regenerate rather than commit.
 
 ## Cost notes
 
-The foundation is designed to cost **~$0 at rest**. There is deliberately **no
-NAT gateway** — nothing needs VPC egress (the chat Lambda runs outside the VPC;
-the KB is serverless S3 Vectors; Aurora uses the RDS Data API). The VPC,
-subnets, gateway endpoints, DynamoDB (on-demand), SQS, S3, and S3 Vectors are
-all free or pay-per-use at rest.
+The foundation is designed to cost **~$0 at rest** — and *at rest* is doing
+real work in that sentence: it holds because Aurora is currently gated off
+(`enableAurora: "false"`). When Aurora comes on for the Phase 5b benchmark,
+`min_capacity = 0` pauses **ACU billing** but not storage or backup, so the
+floor becomes ~$0.12/mo rather than $0. Small, but not zero — quoted honestly
+because the whole point of Phase 5b is a cost column nobody has to trust.
+
+There is deliberately **no NAT gateway** — nothing needs VPC egress (the chat
+Lambda runs outside the VPC; the KB is serverless S3 Vectors; Aurora uses the
+RDS Data API). The VPC, subnets, gateway endpoints, DynamoDB (on-demand), SQS,
+S3, and S3 Vectors are all free or pay-per-use at rest.
 
 Nothing deployed today has a standing cost. The sync chat path (API Gateway +
 Lambda + Bedrock + DynamoDB + KB) can stay up permanently; `make infra-down`

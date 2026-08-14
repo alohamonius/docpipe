@@ -432,3 +432,49 @@ untouched here and should be decided on its own merits.
   not cost but the API Gateway integration timeout (HTTP API caps at 30s, not
   raisable) and the fact that neither API Gateway integration streams — a
   token-by-token UI needs a Lambda Function URL with `RESPONSE_STREAM`.
+
+## 2026-08-14 — Aurora has a fifth gap, and the docs disagreed about whether it exists
+
+Triggered by a plain question — "why was Aurora rejected?" — whose premise was
+wrong. Aurora was never rejected; it is `PLAN.md`'s stated primary vector store.
+Reading the code to answer properly turned up a gap the plan did not list.
+
+- **The Aurora component produces no outputs, so nothing can consume it.**
+  `pulumi/components/data.py:142-171` creates the cluster and its instance into
+  a *local* `cluster` variable: no `self.aurora_*` attributes are set, and
+  `register_outputs({})` is empty. Bedrock KB's `rdsConfiguration` needs
+  `resourceArn`, `credentialsSecretArn`, `databaseName`, `tableName` and a
+  `fieldMapping`; `pulumi/__main__.py` can read **none** of them, and
+  `components/kb.py` never mentions Aurora at all. This is prior to the four
+  gaps recorded on 2026-08-13 (`enable_http_endpoint`, `bedrock_user`, the
+  table + three indexes, and — also newly listed — the second KB resource
+  itself): fix the wiring first or the other four have nowhere to plug in.
+- **"Gated behind a flag" read as "one flip away", and it is not.**
+  `Pulumi.dev.yaml` said only that Aurora "stays off". A reader — including me,
+  earlier in this session — infers the cluster is otherwise ready. Five items
+  stand between `enableAurora: "true"` and a KB that attaches. The flag now
+  carries that warning inline.
+- **Three documents, three statuses, for one decision.** `PLAN.md:43` called
+  Aurora pgvector primary (a locked decision); `Pulumi.dev.yaml:7` called it a
+  Phase 5b item that stays off; `README.md` claimed the foundation costs "~$0 at
+  rest", which is true *only* while Aurora is off. None of the three was
+  false in isolation; together they described three different projects. This is
+  the same failure as the chunking contract — **a decision written in prose, in
+  more than one place, reconciled by nothing.** The chunking case was closed by
+  making the contract a test. There is no equivalent for "is Aurora built", and
+  the honest fix here was narrower: state build status next to every claim about
+  it, and date-stamp claims about live AWS state so a stale reading is visible
+  as stale rather than read as current.
+- **A stale blocker outlived its blocker.** `PLAN.md`'s pre-flight still said
+  the `NONE` chunking change was "uncommitted and unapplied" two commits after
+  it was committed (`dbc3e8d`) and tested (`5430984`). *Committed*, *tested* and
+  *deployed* are three separate claims and the plan now states each separately —
+  the AST-based contract test deliberately does not check AWS, so nothing in CI
+  can collapse them for us.
+- **Could not verify live AWS state during this pass.** The working shell's
+  credentials returned `UnrecognizedClientException`, and the installed `aws`
+  CLI is v1 — it has no `bedrock-agent` command, so `get-data-source` and
+  `list-ingestion-jobs` are unavailable from it. `.venv/bin/python` has a boto3
+  new enough for both. Recorded so the next session does not repeat the loop:
+  refresh credentials first, and drive Bedrock control-plane calls through
+  boto3, not the system `aws`.

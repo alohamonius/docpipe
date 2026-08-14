@@ -40,17 +40,48 @@ content) via Bedrock Knowledge Bases, with citations.
   type (measured, FINDINGS.md), and the only other supported family — Cohere
   Embed v3 — caps input at 512 tokens against a corpus at p90 ≈ 2,200 tokens.
   Titan v2's 8,192 is the only fit. Do not reopen without re-measuring.
-- **Vector store = Aurora PostgreSQL + pgvector as primary; S3 Vectors retained
-  as a second KB over the same source bucket.** `min_capacity = 0` **is**
+- **Vector store = Aurora PostgreSQL + pgvector as *intended* primary; S3 Vectors
+  retained as a second KB over the same source bucket.** `min_capacity = 0` **is**
   supported by Bedrock KB (ACU 0–16), so scale-to-zero survives; the ~15s resume
   is accepted and hidden by pre-warming on chat-UI open. Two KBs make Phase 5b a
   config flip (`retrieval.py` already takes `knowledge_base_id`) and double as a
   rollback path. S3 Vectors idles at ~$0, so keeping it costs nothing.
+  **Build status: not built.** Only the S3 Vectors KB exists today; the dev stack
+  sets `enableAurora: "false"` (`pulumi/Pulumi.dev.yaml:8`) and flipping it to
+  true still would not produce a KB-attachable cluster — see the five gaps in
+  Phase 2. "Primary" is the target, not the deployed state.
 - **KB corpus = `health.studio/build/kb/`**, produced by `pnpm kb:build` — **383
   chunk-final files + 383 `.metadata.json` sidecars** (192 prose from 20 docs,
   191 graph; 1,686,867 B). **Not `docs/`**: that tree holds files health.studio's
   corpus policy excludes, one of them for a safety reason. Because the corpus is
   chunk-final, the data source runs `chunkingStrategy: NONE` — see FINDINGS.md.
+
+## Current priority (set 2026-08-14, the human's)
+
+**The measured decision is the deliverable, so Phase 5b comes first.** What this
+project is judged on is *"I benchmarked S3 Vectors against Aurora pgvector on the
+same corpus and golden set — here is recall, latency and cost"*, not a shipped
+chat endpoint. Phase 3's agent/API work and Phase 4's health.studio integration
+are **deferred behind it**. The benchmark does not need either: `retrieval.py`
+calls the Retrieve API directly, so nothing on the eval path goes through a
+Lambda or API Gateway.
+
+Execution order, and what each step is actually blocked on:
+
+1. **Split the 19 oversized graph chunks upstream** (health.studio
+   `build-kb.ts`) — decided 2026-08-14. Filenames become S3 keys, so this
+   precedes any ingest or it orphans vectors. Cross-repo; no AWS.
+2. **`pulumi up`** — apply the already-committed `NONE` chunking (`dbc3e8d`) and
+   guardrail wiring (`ff6c91f`). Replaces the data source; `dataSourceId` changes.
+3. **First ingest** into the S3 Vectors KB.
+4. **Golden set** — 30–50 `question → expected-passage(s)` pairs. Blocked on
+   nothing except the corpus being final, entirely offline, and the single
+   biggest hole in the project: there is no evaluation story at all today.
+5. **Aurora** — the five gaps in Phase 2, then a second KB over the same bucket.
+6. **Measure** — recall@k / MRR / p50 / p95 / $, plus the `hnsw.ef_search` sweep.
+
+Phases are deliberately **not renumbered**: FINDINGS.md and `docs/interview/`
+reference them by number. Only the execution order changed.
 
 ## Phase 0 — Init & setup ✅
 
@@ -101,13 +132,31 @@ guardrail `pjpeeu9hf68a`, invocation logging active. Gotchas in FINDINGS.md.
       `enable_aurora` (default false) so the cheap chat path can apply alone**
 - [x] `kb` module: KB source S3 bucket, Bedrock Knowledge Base (Titan
       embeddings) backed by **S3 Vectors** (cheap, serverless — not OpenSearch)
-- [ ] **Aurora gaps found 2026-08-13, required before it can back a KB:**
-      `enable_http_endpoint` (RDS Data API) is **not set** in `data.py`; a
-      dedicated `bedrock_user` role + its own Secrets Manager secret is needed
-      (the current `manage_master_user_password` is the *master* secret); and
-      the `bedrock_integration.bedrock_kb` table + **three** indexes (HNSW
-      `ef_construction=256`, GIN on `to_tsvector`, GIN on `custom_metadata`)
-      must be bootstrapped — Pulumi will not create them. Schema in FINDINGS.md.
+- **Aurora gaps — five, all required before it can back a KB.** Found
+  2026-08-13; item 5 added 2026-08-14. Flipping `enableAurora: true` today
+  yields a cluster Bedrock cannot attach to, so these are the real Phase 5b
+  blocker, not the config flag:
+  - [ ] **`enable_http_endpoint` (RDS Data API) is not set** —
+        `pulumi/components/data.py:142-160` creates the cluster without it.
+        Bedrock KB reaches Aurora over the Data API, so without this there is
+        no connection path at all.
+  - [ ] **No dedicated `bedrock_user`** — `data.py:150` uses
+        `manage_master_user_password=True`, which is the **master** secret.
+        Bedrock should hold its own least-privilege role and its own Secrets
+        Manager secret, not the master credentials.
+  - [ ] **`bedrock_integration.bedrock_kb` table + three indexes must be
+        bootstrapped by hand** — HNSW `ef_construction=256`, GIN on
+        `to_tsvector`, GIN on `custom_metadata`. Pulumi will not create them
+        (no SQL provider in the stack). Schema in FINDINGS.md.
+  - [ ] **Second KB resource does not exist** — `pulumi/components/kb.py`
+        builds exactly one KB, on S3 Vectors. The Aurora-backed one, over the
+        same source bucket with identical Titan v2 @ 1024, is unwritten.
+  - [ ] **The component exports nothing** — `data.py:142-171` assigns the
+        cluster to a local `cluster`, sets no `self.aurora_*` attributes, and
+        `register_outputs({})` is empty. Nothing downstream can read the
+        cluster ARN, endpoint or secret ARN, all of which the KB's
+        `rdsConfiguration` requires. Fix this before the other four, or they
+        have nowhere to plug in.
 - [ ] **Untracked resource:** Managed KB `XHWRWMWMIQ`
       (`knowledge-base-quick-start-nxl5n`, created 2026-08-04 via console Quick
       Create) is live and outside Pulumi state — `make infra-down` will not
@@ -120,18 +169,30 @@ guardrail `pjpeeu9hf68a`, invocation logging active. Gotchas in FINDINGS.md.
 
 ### Pre-flight — ordered, and all of it is free only while the KB is empty
 
-The source bucket holds **0 objects** and the KB has run **0 ingestion jobs**, so
-every corpus-shape decision is still reversible at zero cost. That stops being
-true after the first ingest. Do these in order:
+As of 2026-08-13 the source bucket held **0 objects** and the KB had run **0
+ingestion jobs**, so every corpus-shape decision is still reversible at zero
+cost. That stops being true after the first ingest. Do these in order:
 
-- [ ] **BLOCKER — deployed config ≠ code.** The live data source `KPAQK6MQY4`
-      still reports `FIXED_SIZE` (500 tokens / 20% overlap); the `NONE` change in
-      `pulumi/components/kb.py` is uncommitted and unapplied. Ingesting now
-      strips the ★ legend and the "not a diagnosis" header off every fragment
-      after the first. Commit → `pulumi up` → **then** sync. Note the `up`
+- [ ] **BLOCKER — deployed config ≠ code.** The `NONE` change in
+      `pulumi/components/kb.py` is now **committed** (`dbc3e8d`) and **asserted
+      by a test** (`5430984`, written red first) — but **not applied**. As last
+      verified 2026-08-13, the live data source `KPAQK6MQY4` reports
+      `FIXED_SIZE` (500 tokens / 20% overlap); *not re-verified since* — the
+      working shell's credentials were invalid on 2026-08-14 and the local
+      `aws` CLI is v1, which has no `bedrock-agent` command. Ingesting under
+      `FIXED_SIZE` strips the ★ legend and the "not a diagnosis" header off
+      every fragment after the first. `pulumi up` → **then** sync. The `up`
       **replaces** the data source, so `dataSourceId` changes.
+- [ ] **The chunking test does not check AWS.** `test_kb_chunking_contract.py`
+      parses the component's AST, by design (FINDINGS.md, 2026-08-14) — a
+      console edit to the live data source would pass it green. Closing that
+      needs a `describe_data_source` check against the deployed stack, which is
+      not written. Until it is, "committed" and "deployed" are separate claims
+      and this file should keep stating both.
 - [ ] **Split the 19 oversized graph chunks upstream** (health.studio
-      `build-kb.ts`). Measured: prose is healthy (median 264w, max 664w) but
+      `build-kb.ts`) — **decided 2026-08-14 (the human's): do this before the
+      first ingest**, not after; it is step 1 of the current priority order.
+      Measured: prose is healthy (median 264w, max 664w) but
       graph runs median 652w to **max 3,692w** — one 1024-dim vector per file
       means a whole organ's referral map gets the same budget as a 107-word
       overview. Splitting changes filenames → S3 keys, so doing it *after* an

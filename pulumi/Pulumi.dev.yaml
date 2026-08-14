@@ -4,7 +4,16 @@ config:
   # the ambient credential chain (env vars / OIDC).
   aws:profile: docpipe
   docpipe:namePrefix: docpipe-dev
-  # Aurora (Phase 5b pgvector benchmark) stays off — min_acu=0 anyway when on.
+  # Aurora is off. Phase 5b (the pgvector benchmark) is now the next block of
+  # work, so this flag flips soon — but NOT on its own: see the five gaps in
+  # PLAN.md Phase 2. Flipping it today yields a cluster Bedrock cannot attach
+  # to. min_acu=0 when on, so ACU billing pauses (storage/backup do not).
   docpipe:enableAurora: "false"
+  # Two models, both DeepSeek. Summary = R1 (INFERENCE_PROFILE-only, no tool
+  # use); chat = v3.2 (ON_DEMAND, tool use). chatModelId is stated explicitly
+  # rather than left to the code default in __main__.py:21 — one config value
+  # used to feed both IAM statements, and that bug was invisible precisely
+  # because the value was implicit.
   docpipe:bedrockModelId: us.deepseek.r1-v1:0
+  docpipe:chatModelId: deepseek.v3.2
 encryptionsalt: v1:mtI+hMM57tE=:v1:9uv7mL2rGJ0t/wfB:HuANWt7hNDBqzvonrj7OPdUVbnAqnA==
