@@ -68,9 +68,14 @@ Lambda or API Gateway.
 
 Execution order, and what each step is actually blocked on:
 
-1. **Split the 19 oversized graph chunks upstream** (health.studio
-   `build-kb.ts`) — decided 2026-08-14. Filenames become S3 keys, so this
-   precedes any ingest or it orphans vectors. Cross-repo; no AWS.
+1. **Shrink the oversized graph chunks upstream** (health.studio) — decided
+   2026-08-14, and the fix changed once measured: **move `Sources` out of the
+   embedded body into the metadata sidecar**, rather than splitting files.
+   Sources is the single largest section in the corpus (39,717w across the 132
+   connection docs, ~301w each) and it is bibliography competing with clinical
+   content for one vector. Dropping it from the body takes graph chunks >2,000w
+   from **19 → 2** and renames **nothing** — so it carries none of the
+   orphan-vector risk a split does. Cross-repo; no AWS.
 2. **`pulumi up`** — apply the already-committed `NONE` chunking (`dbc3e8d`) and
    guardrail wiring (`ff6c91f`). Replaces the data source; `dataSourceId` changes.
 3. **First ingest** into the S3 Vectors KB.
@@ -202,14 +207,25 @@ in order:
       needs a `describe_data_source` check against the deployed stack, which is
       not written. Until it is, "committed" and "deployed" are separate claims
       and this file should keep stating both.
-- [ ] **Split the 19 oversized graph chunks upstream** (health.studio
-      `build-kb.ts`) — **decided 2026-08-14 (the human's): do this before the
-      first ingest**, not after; it is step 1 of the current priority order.
-      Measured: prose is healthy (median 264w, max 664w) but
-      graph runs median 652w to **max 3,692w** — one 1024-dim vector per file
-      means a whole organ's referral map gets the same budget as a 107-word
-      overview. Splitting changes filenames → S3 keys, so doing it *after* an
-      ingest creates orphan vectors. Do it first and that problem never exists.
+- [ ] **Shrink the oversized graph chunks upstream** (health.studio) —
+      **decided 2026-08-14 (the human's): before the first ingest**, not after;
+      step 1 of the current priority order. Prose is healthy (p50 265w, max
+      664w); graph runs p50 652w to **max 3,692w** — one 1024-dim vector per
+      file means a whole organ's referral map gets the same budget as a
+      107-word overview.
+      **The fix is not a split.** Measured 2026-08-14 by section: `Sources` is
+      the largest section in the corpus — 39,717w across the 132
+      `body-graph-connection--*` docs (~301w each, 852w in the largest) — i.e.
+      labels and URLs consuming ~30% of the embedding budget. Moving it to the
+      metadata sidecar with `includeForEmbedding: false` (a flag `stamp.ts`
+      already has) takes graph chunks >2,000w from **19 → 2** and >1,000w from
+      86 → 70, while renaming **zero** files. Splitting would rename ~86, and a
+      rename after ingest strands vectors that keep retrieving as current text
+      (`CorpusSyncer` never deletes). Handed to a health.studio agent.
+      **Unverified and it blocks:** sidecars are already ≤1,705 B against S3
+      Vectors' **2 KB filterable-metadata cap**, and this adds the largest
+      attribute yet. Must be measured against a real ingestion, not assumed.
+      Whether the 2 remaining >2k chunks need splitting is a later call.
 - [ ] Re-run `--dry-run` to confirm the new distribution, then one ingest.
 
 ### Known gaps in the sync path
