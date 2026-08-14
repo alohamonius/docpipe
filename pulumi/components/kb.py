@@ -50,6 +50,10 @@ class KnowledgeBase(pulumi.ComponentResource):
             opts=me,
         )
         self.source_bucket = source.id
+        # The Aurora KB indexes this same bucket — see kb_aurora.py. Both KBs
+        # must read byte-identical objects or the benchmark compares corpora
+        # rather than vector stores.
+        self.source_bucket_arn = source.arn
         aws.s3.BucketPublicAccessBlock(
             f"{prefix}-kb-source-pab",
             bucket=source.id,

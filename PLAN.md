@@ -132,31 +132,43 @@ guardrail `pjpeeu9hf68a`, invocation logging active. Gotchas in FINDINGS.md.
       `enable_aurora` (default false) so the cheap chat path can apply alone**
 - [x] `kb` module: KB source S3 bucket, Bedrock Knowledge Base (Titan
       embeddings) backed by **S3 Vectors** (cheap, serverless — not OpenSearch)
-- **Aurora gaps — five, all required before it can back a KB.** Found
-  2026-08-13; item 5 added 2026-08-14. Flipping `enableAurora: true` today
-  yields a cluster Bedrock cannot attach to, so these are the real Phase 5b
-  blocker, not the config flag:
-  - [ ] **`enable_http_endpoint` (RDS Data API) is not set** —
-        `pulumi/components/data.py:142-160` creates the cluster without it.
-        Bedrock KB reaches Aurora over the Data API, so without this there is
-        no connection path at all.
-  - [ ] **No dedicated `bedrock_user`** — `data.py:150` uses
-        `manage_master_user_password=True`, which is the **master** secret.
-        Bedrock should hold its own least-privilege role and its own Secrets
-        Manager secret, not the master credentials.
-  - [ ] **`bedrock_integration.bedrock_kb` table + three indexes must be
-        bootstrapped by hand** — HNSW `ef_construction=256`, GIN on
-        `to_tsvector`, GIN on `custom_metadata`. Pulumi will not create them
-        (no SQL provider in the stack). Schema in FINDINGS.md.
-  - [ ] **Second KB resource does not exist** — `pulumi/components/kb.py`
-        builds exactly one KB, on S3 Vectors. The Aurora-backed one, over the
-        same source bucket with identical Titan v2 @ 1024, is unwritten.
-  - [ ] **The component exports nothing** — `data.py:142-171` assigns the
-        cluster to a local `cluster`, sets no `self.aurora_*` attributes, and
-        `register_outputs({})` is empty. Nothing downstream can read the
-        cluster ARN, endpoint or secret ARN, all of which the KB's
-        `rdsConfiguration` requires. Fix this before the other four, or they
-        have nowhere to plug in.
+- **Aurora gaps — five, found 2026-08-13/14. All five now written (2026-08-14),
+  none yet applied.** The code exists; no AWS resource does. What remains is
+  three ordered operations, not more code:
+  - [x] **`enable_http_endpoint` (RDS Data API)** — set in `data.py`. This is
+        the entire connection path: Bedrock reaches Aurora over the Data API,
+        which is also why a cluster in private subnets needs no NAT.
+  - [x] **Dedicated `bedrock_user`** — its own Secrets Manager secret, created
+        empty by Pulumi (`data.py`). The master secret stays out of Bedrock's
+        reach; the KB role's `GetSecretValue` is scoped to the one ARN.
+        **The password is never in Pulumi state** — `aurora_bootstrap.py`
+        generates it and writes version 1.
+  - [x] **`bedrock_integration.bedrock_kb` + three indexes** —
+        `scripts/aurora_bootstrap.py`, idempotent, over the Data API with the
+        master secret. HNSW `ef_construction=256`, GIN `to_tsvector`, GIN
+        `custom_metadata`. `hnsw.ef_search` stays a session knob, which is what
+        makes the Phase 5b sweep possible without an index rebuild.
+  - [x] **Second KB resource** — `pulumi/components/kb_aurora.py`, over the
+        *same* source bucket, identical Titan v2 @ 1024 FLOAT32, identical
+        `chunkingStrategy: NONE`. Held identical on purpose: if these drift the
+        benchmark measures the drift instead of the store.
+  - [x] **The component exports nothing** — fixed first, since the other four
+        had nowhere to plug in. `data.py` now sets `aurora_cluster_arn`,
+        `aurora_cluster_endpoint`, `aurora_database_name`,
+        `aurora_master_secret_arn`, `aurora_bedrock_secret_arn` and
+        `aurora_bedrock_username`, all exported from `__main__.py`.
+- [ ] **Apply it — three ordered steps, and the order is not negotiable.**
+      Bedrock validates the DB connection at `CreateKnowledgeBase`, so the table
+      and role must exist before the KB is created. Hence two flags:
+      1. `enableAurora: true` → `pulumi up` (cluster + Data API + empty secret)
+      2. `AWS_PROFILE=docpipe python scripts/aurora_bootstrap.py`
+      3. `enableAuroraKb: true` → `pulumi up` (the KB attaches)
+      `__main__.py` raises if step 3 is attempted without step 1. Nothing
+      enforces step 2 — that failure surfaces as a KB create error.
+- [ ] **Untested against AWS.** The Aurora branch in `data.py` has **never
+      executed** (`describe_db_clusters` → 0 clusters, verified 2026-08-14), so
+      the first `up` runs it for the first time. `kb_aurora.py` has never been
+      previewed. Treat the first apply as a test, not a deployment.
 - [ ] **Untracked resource:** Managed KB `XHWRWMWMIQ`
       (`knowledge-base-quick-start-nxl5n`, created 2026-08-04 via console Quick
       Create) is live and outside Pulumi state — `make infra-down` will not

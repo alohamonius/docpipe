@@ -4,11 +4,18 @@ config:
   # the ambient credential chain (env vars / OIDC).
   aws:profile: docpipe
   docpipe:namePrefix: docpipe-dev
-  # Aurora is off. Phase 5b (the pgvector benchmark) is now the next block of
-  # work, so this flag flips soon — but NOT on its own: see the five gaps in
-  # PLAN.md Phase 2. Flipping it today yields a cluster Bedrock cannot attach
-  # to. min_acu=0 when on, so ACU billing pauses (storage/backup do not).
+  # Aurora, in two flags, because it takes two applies with a SQL step between.
+  # Bedrock validates the DB connection when it creates the KB, so the table and
+  # the bedrock_user role must exist BEFORE enableAuroraKb flips:
+  #
+  #   1. enableAurora: true   → pulumi up          (cluster, Data API, secret)
+  #   2. AWS_PROFILE=docpipe python scripts/aurora_bootstrap.py
+  #   3. enableAuroraKb: true → pulumi up          (the KB attaches)
+  #
+  # min_acu=0 when on, so ACU billing pauses when idle (storage/backup do not,
+  # ≈$0.12/mo). The ~15s resume on the first query is accepted — 2026-08-14.
   docpipe:enableAurora: "false"
+  docpipe:enableAuroraKb: "false"
   # Two models, both DeepSeek. Summary = R1 (INFERENCE_PROFILE-only, no tool
   # use); chat = v3.2 (ON_DEMAND, tool use). chatModelId is stated explicitly
   # rather than left to the code default in __main__.py:21 — one config value
