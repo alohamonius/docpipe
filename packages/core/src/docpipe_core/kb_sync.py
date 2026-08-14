@@ -18,13 +18,27 @@ knowing:
   * **Upload is incremental locally.** We skip files whose bytes already match
     the object in S3 (ETag == content MD5 for single-part, SSE-S3 objects), so
     re-running only re-PUTs what changed.
+  * **The sync is a mirror, not an append.** Keys under the prefix that the
+    local build no longer produces are *deleted* (`prune=True`, the default), so
+    the bucket equals the last `pnpm kb:build` output. This is not tidy-up:
+    chunk keys are slugified section headings, so renaming a heading in `docs/`
+    mints a new key, and before pruning existed the old one stayed in the bucket
+    — embedded, retrievable, indistinguishable from the live chunk at query
+    time, forever. Ordinary editing was enough to trigger it.
   * **Ingestion is incremental on Bedrock's side.** `StartIngestionJob`
     re-embeds only added/changed/deleted documents, so re-running after editing
-    one doc is cheap — you don't pay to re-embed the whole corpus.
+    one doc is cheap — you don't pay to re-embed the whole corpus. Bedrock's
+    "deleted" means *the object is gone from the bucket*, which is precisely
+    what the prune above makes true; without it that word described nothing.
+  * **A prune is guarded, because remote-minus-local trusts the local tree.**
+    Point a mirror at an unbuilt or half-built `build/kb` and the same diff
+    empties the corpus. `max_delete_ratio` (default 10%) refuses first and
+    mutates nothing. See `BlastRadiusRefused`.
   * **Metadata sidecars ride along.** A `<file>.md.metadata.json` next to a
     document is uploaded with it, and Bedrock attaches its attributes to every
     vector from that document. That is what makes `min_evidence` filtering and
-    named citations possible downstream (see `retrieval.py`).
+    named citations possible downstream (see `retrieval.py`). They are pruned
+    *with* their document and never before it.
 """
 
 from __future__ import annotations
@@ -61,6 +75,41 @@ _TIMEOUT_STATUS = "TIMEOUT"
 # body, so S3 returns bare "404"; moto/other paths may say NoSuchKey/NotFound).
 _MISSING_OBJECT_CODES = frozenset({"404", "NoSuchKey", "NotFound"})
 
+# Blast-radius limit: the fraction of the keys under the prefix that one sync may
+# delete before it refuses and asks to be told the number explicitly.
+#
+# 10% is measured, not picked. Against the 2026-08-14 corpus (383 documents +
+# 383 sidecars) the largest family a routine edit can retire is the 31
+# `body-graph-structure` chunks — 8.1%; every prose source-doc family is ≤ 15
+# chunks (3.9%). So every ordinary heading rewrite passes untouched. The
+# 132-chunk `body-graph-connection` family is 34% and is *meant* to trip this:
+# retiring a third of the corpus is a decision, not a side effect. A half-built
+# `build/kb` or a --source one directory too deep lands far above it.
+DEFAULT_MAX_DELETE_RATIO = 0.10
+
+
+class BlastRadiusRefused(RuntimeError):
+    """A prune would remove more of the bucket than the caller allowed.
+
+    Raised *before* any mutation — no upload, no delete, no ingestion job — so a
+    refused sync leaves the bucket exactly as it was.
+    """
+
+    def __init__(self, *, deletions: int, remote_total: int, ratio: float, limit: float) -> None:
+        self.deletions = deletions
+        self.remote_total = remote_total
+        self.ratio = ratio
+        self.limit = limit
+        super().__init__(
+            f"refusing to prune {deletions} of {remote_total} keys under the prefix "
+            f"({ratio:.0%} > the {limit:.0%} blast-radius limit); nothing was changed.\n"
+            "  The usual cause is a local corpus that is not the one you think it is: an\n"
+            "  unbuilt or half-built build/kb, or a --source pointing one level too deep.\n"
+            "  Rebuild with `pnpm kb:build` and re-run.\n"
+            "  If this many chunks really are retiring, say the number out loud:\n"
+            "  --max-delete-ratio 1.0 (or any value above the ratio printed above)."
+        )
+
 
 class SyncAction(StrEnum):
     UPLOADED = "uploaded"
@@ -79,6 +128,17 @@ class PlannedDoc(BaseModel):
     sidecar: bool = False
 
 
+class PrunedKey(BaseModel):
+    """A key in the bucket that the local build no longer produces.
+
+    No local path, no digest — the file it mirrored does not exist any more.
+    That is why it is not a `PlannedDoc`.
+    """
+
+    key: str
+    sidecar: bool
+
+
 class IngestionOutcome(BaseModel):
     job_id: str
     status: str
@@ -93,6 +153,7 @@ class IngestionOutcome(BaseModel):
 
 class SyncReport(BaseModel):
     docs: list[PlannedDoc]
+    pruned: list[PrunedKey] = []
     ingestion: IngestionOutcome | None = None
 
     @property
@@ -133,6 +194,32 @@ def discover_corpus(root: Path) -> list[Path]:
 
 def is_sidecar(path: Path) -> bool:
     return path.name.endswith(_SIDECAR_SUFFIX)
+
+
+def prune_order(keys: set[str]) -> list[str]:
+    """Order a delete set so a document is always removed before its sidecar.
+
+    The order is a safety property, not a cosmetic one. A `.md` left in the
+    bucket *without* its `.metadata.json` is a silent defect: Bedrock re-embeds
+    it with no attributes, so an unrated chunk sails straight through a
+    `min_evidence` filter downstream (`retrieval.py`). The reverse — a sidecar
+    whose document is gone — is inert: no ingestion reads it, which is the
+    orphan `discover_corpus` already refuses to create locally. So if a prune
+    dies half-way through, it must die on the inert side.
+
+    Plain `sorted()` happens to produce this order today (a string sorts before
+    any string it prefixes), but that is a property of the collation, not a
+    decision. This says it on purpose.
+    """
+    ordered: list[str] = []
+    for key in sorted(keys):
+        if key.endswith(_SIDECAR_SUFFIX) and key[: -len(_SIDECAR_SUFFIX)] in keys:
+            continue  # emitted just below, right after its document
+        ordered.append(key)
+        sidecar = key + _SIDECAR_SUFFIX
+        if sidecar in keys:
+            ordered.append(sidecar)
+    return ordered
 
 
 def _digest(data: bytes) -> str:
@@ -188,6 +275,37 @@ class CorpusSyncer:
             )
         return planned
 
+    def list_remote_keys(self) -> set[str]:
+        """Every key currently under the prefix. Paginated — the corpus is 766+."""
+        keys: set[str] = set()
+        paginator = self._s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=self.prefix):
+            keys.update(obj["Key"] for obj in page.get("Contents", []))
+        return keys
+
+    def plan_prune(self, root: Path | str) -> list[PrunedKey]:
+        """Remote minus local: what a sync would delete, deleting nothing.
+
+        This is also the audit: run it against a live bucket and the length is
+        the orphan count, the keys are the orphans.
+        """
+        return self._prune_diff(Path(root))[0]
+
+    def _prune_diff(self, root: Path) -> tuple[list[PrunedKey], int]:
+        """(what to delete, how many keys are under the prefix at all).
+
+        The second number is the blast-radius denominator, so it is read from
+        the same listing as the first — a ratio computed against a stale count
+        is not a guard.
+        """
+        local = {self.key_for(root, path) for path in discover_corpus(root)}
+        remote = self.list_remote_keys()
+        orphans = prune_order(remote - local)
+        return (
+            [PrunedKey(key=k, sidecar=k.endswith(_SIDECAR_SUFFIX)) for k in orphans],
+            len(remote),
+        )
+
     def _matches_remote(self, key: str, digest: str) -> bool:
         try:
             head = self._s3.head_object(Bucket=self.bucket, Key=key)
@@ -205,16 +323,34 @@ class CorpusSyncer:
         *,
         start_ingestion: bool = True,
         wait: bool = True,
+        prune: bool = True,
+        max_delete_ratio: float = DEFAULT_MAX_DELETE_RATIO,
         poll_interval: float = 5.0,
         timeout: float = 900.0,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
     ) -> SyncReport:
+        """Make the bucket equal ``root`` — upload what changed, delete what left.
+
+        ``prune=False`` restores the append-only behaviour this module had
+        before 2026-08-14, kept reachable and named rather than removed.
+        ``max_delete_ratio=1.0`` disables the blast-radius guard for a
+        deliberate large reshape.
+        """
         root = Path(root)
         if not root.is_dir():
             raise ValueError(f"corpus root is not a directory: {root}")
 
         planned = self.plan(root)
+        # The whole diff is computed, and the guard consulted, before the first
+        # mutation. A refusal means "this local tree is not trustworthy", and a
+        # tree that cannot be trusted to delete cannot be trusted to upload
+        # either — so a refused sync leaves the bucket byte-for-byte as it was.
+        to_prune: list[PrunedKey] = []
+        if prune:
+            to_prune, remote_total = self._prune_diff(root)
+            self._check_blast_radius(to_prune, remote_total, max_delete_ratio)
+
         for doc in planned:
             if doc.action is SyncAction.UPLOADED:
                 self._s3.put_object(
@@ -234,14 +370,50 @@ class CorpusSyncer:
                 }
             },
         )
+        self._prune(to_prune)
 
         if not start_ingestion:
-            return SyncReport(docs=planned)
+            return SyncReport(docs=planned, pruned=to_prune)
 
         outcome = self._ingest(
             wait=wait, poll_interval=poll_interval, timeout=timeout, sleep=sleep, clock=clock
         )
-        return SyncReport(docs=planned, ingestion=outcome)
+        return SyncReport(docs=planned, pruned=to_prune, ingestion=outcome)
+
+    def _check_blast_radius(
+        self, to_prune: list[PrunedKey], remote_total: int, limit: float
+    ) -> None:
+        if not to_prune:
+            return
+        ratio = len(to_prune) / remote_total  # remote_total >= len(to_prune) >= 1
+        if ratio > limit:
+            raise BlastRadiusRefused(
+                deletions=len(to_prune), remote_total=remote_total, ratio=ratio, limit=limit
+            )
+
+    def _prune(self, to_prune: list[PrunedKey]) -> None:
+        """Delete orphaned keys one at a time, in ``prune_order``.
+
+        Deliberately not ``delete_objects`` (the 1000-key batch call): S3 gives
+        no ordering guarantee within a batch, and the document-before-sidecar
+        order is the point. At corpus scale this is ≤ 766 calls in the absolute
+        worst case, and the guard makes that case unreachable without a flag.
+        """
+        if not to_prune:
+            return
+        for target in to_prune:
+            self._s3.delete_object(Bucket=self.bucket, Key=target.key)
+        self._log.info(
+            "orphans pruned",
+            extra={
+                "context": {
+                    "bucket": self.bucket,
+                    "deleted": len(to_prune),
+                    "documents": len([p for p in to_prune if not p.sidecar]),
+                    "keys": [p.key for p in to_prune],
+                }
+            },
+        )
 
     def _ingest(
         self,

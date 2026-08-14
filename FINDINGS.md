@@ -565,6 +565,69 @@ inverts. `pulumi up` → first ingest → golden set scored on the **current**
 corpus as the control → *then* the bibliography move, with a signed delta
 against that control. The corpus reshape is no longer step 1.
 
+## 2026-08-14 — the syncer could not delete, and the bucket is a measured zero
+
+`CorpusSyncer` uploaded and skipped; it had no `delete_object` and no
+remote-minus-local diff. Its own docstring leaned on Bedrock re-embedding
+"added/changed/**deleted**" documents — true of Bedrock, false here, because
+Bedrock's *deleted* means the object left the bucket and nothing ever took one
+out. Chunk keys are slugified section headings, so a heading rewrite in
+health.studio's `docs/` mints a new key and left the old one embedded and
+retrievable **forever**. Two chunks then answer the same question, both carrying
+a valid stamped header, and retrieval cannot tell which one is stale. Ordinary
+editing was enough to trigger it; no reshape required.
+
+**Pre-fix census — the bucket has NEVER been ingested.** Measured, not assumed,
+2026-08-14 against `docpipe-dev-kb-source-733866507398` with the `docpipe`
+profile:
+
+```
+aws s3 ls s3://…/ --recursive --summarize   → Total Objects: 0
+aws s3api list-object-versions --bucket …   → no versions, no delete markers
+local build/kb (clean pnpm kb:build)        → 383 documents + 383 sidecars
+```
+
+Versioning is **Enabled** on the bucket and has been since creation
+(2026-08-12T22:55:52Z), so anything ever PUT and later removed would still show
+as a noncurrent version or a delete marker. Zero of both is therefore positive
+evidence of "nothing has ever been here", not merely "nothing is here now" —
+which is the distinction the goal asked for. **Orphan count: 0, of the
+never-ingested kind.** Consequence: goal 02's human gate (step 6, "the human
+sees the orphan list before it goes") does not open — there is nothing to
+delete. The delete path was exercised against moto only.
+
+**Guard: one ratio, not three mechanisms.** The three candidates were
+refuse-when-local-is-empty, refuse-above-an-N%-deletion-ratio, and
+dry-run-by-default. Shipped the ratio (`max_delete_ratio`, default **10%**):
+
+- it *subsumes* the empty-tree guard (an empty local tree is a 100% deletion) and
+  additionally catches the realistic failure the empty check misses — a
+  **half-built** `build/kb`, or a `--source` pointing one directory too deep;
+- dry-run-by-default was rejected because `--dry-run` **already exists** on the
+  CLI. Making it the default duplicates an existing affordance, and it degrades
+  the safe half (upload) to guard the dangerous half (delete);
+- 10% is measured against the 2026-08-14 corpus, not picked. Largest family a
+  routine edit can retire: `body-graph-structure`, 31 chunks = 8.1%. Every prose
+  source-doc family is ≤ 15 chunks = 3.9%. The 132-chunk
+  `body-graph-connection` family is 34% and is *meant* to trip the guard —
+  retiring a third of the corpus is a decision, not a side effect. Asserted in
+  `test_default_ratio_admits_the_biggest_routine_rename`.
+
+The guard refuses **before any mutation** — no upload, no delete, no ingestion
+job. A tree that cannot be trusted to delete cannot be trusted to upload either.
+
+**Deletion order is a safety property.** Document first, then its sidecar. A
+`.md` left without its `.metadata.json` is a *silent* defect: Bedrock re-embeds
+it with no attributes, so an unrated chunk sails through a `min_evidence` filter
+in `retrieval.py`. The reverse — a sidecar with no document — is inert, nothing
+reads it. So a prune that dies half-way must die on the inert side. This is also
+why `_prune` calls `delete_object` per key rather than the 1000-key
+`delete_objects` batch: S3 gives no ordering guarantee within a batch.
+
+Red-first, on this branch: the rename test failed on HEAD with
+`AssertionError: assert 'corpus/anatomy/00-…--01-overview.md' not in [… it was
+still there …]` — 11 failed / 12 passed. After the fix, 68/68 repo-wide.
+
 ## 2026-08-16 — Pre-ingest review: the corpus is clean, the destination is not
 
 Review of the data staged for the first ingest (`health.studio/build/kb`, 383

@@ -224,3 +224,264 @@ def test_sidecar_only_edit_still_reuploads(tmp_path: Path, s3_bucket) -> None:
     # The new grade really replaced the old one in S3.
     stored = s3_bucket.get_object(Bucket=BUCKET, Key="corpus/index.md.metadata.json")
     assert stored["Body"].read().decode() == sidecar.read_text()
+
+
+# ── Pruning: the bucket equals the last build, deletions included ───────────
+# Chunk keys are slugified section headings, so renaming a heading in `docs/`
+# mints a new key and — before this — left the old one in the bucket, embedded
+# and retrievable forever. Two chunks then answer the same question and the
+# stale one is indistinguishable at retrieval time. See
+# how2doo `goals/kb-retrieval-readiness/02-sync-fidelity/goal.md`.
+
+
+def remote_keys(s3_client: Any, prefix: str = "") -> list[str]:
+    """Every key currently in the test bucket, sorted."""
+    got = s3_client.list_objects_v2(Bucket=BUCKET, Prefix=prefix)
+    return sorted(obj["Key"] for obj in got.get("Contents", []))
+
+
+def make_wide_corpus(root: Path, docs: int = 20) -> list[Path]:
+    """``docs`` chunks, each with a sidecar — wide enough that ONE rename is a
+    small fraction of it, the way it is in the real 383-chunk build. A 2-file
+    corpus would make every rename a 50% deletion and never exercise the
+    default blast-radius ratio.
+    """
+    (root / "anatomy").mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    for i in range(docs):
+        doc = root / "anatomy" / f"{i:02d}-myofascial-chains--01-overview.md"
+        doc.write_text(f"# Chain {i}\n\nEvidence: ★★☆\n")
+        sidecar_for(doc)
+        written.append(doc)
+    return written
+
+
+def drop(doc: Path) -> None:
+    """Remove a chunk the way a rebuild does — document and sidecar together."""
+    doc.with_name(doc.name + ".metadata.json").unlink()
+    doc.unlink()
+
+
+class RecordingS3:
+    """Moto client that records the exact order of delete_object calls."""
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+        self.deleted: list[str] = []
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+    def delete_object(self, **kwargs: Any) -> Any:
+        self.deleted.append(kwargs["Key"])
+        return self._inner.delete_object(**kwargs)
+
+
+def test_renamed_chunk_stops_being_retrievable(tmp_path: Path, s3_bucket) -> None:
+    """The headline case. A heading rewrite renames the key; the old one must go."""
+    docs = make_wide_corpus(tmp_path)
+    syncer(s3_bucket, FakeAgent([])).sync(tmp_path, start_ingestion=False)
+    assert len(remote_keys(s3_bucket)) == 40  # 20 documents + 20 sidecars
+
+    # `## Overview` → `## What this chain is` in docs/ ⇒ a new slug, same content.
+    old = docs[0]
+    new = old.with_name("00-myofascial-chains--01-what-this-chain-is.md")
+    old.with_name(old.name + ".metadata.json").rename(new.with_name(new.name + ".metadata.json"))
+    old.rename(new)
+
+    report = syncer(s3_bucket, FakeAgent([])).sync(tmp_path, start_ingestion=False)
+
+    live = remote_keys(s3_bucket)
+    assert "corpus/anatomy/00-myofascial-chains--01-overview.md" not in live
+    assert "corpus/anatomy/00-myofascial-chains--01-overview.md.metadata.json" not in live
+    assert "corpus/anatomy/00-myofascial-chains--01-what-this-chain-is.md" in live
+    assert len(live) == 40  # the rename replaced, it did not accumulate
+    assert [p.key for p in report.pruned] == [
+        "corpus/anatomy/00-myofascial-chains--01-overview.md",
+        "corpus/anatomy/00-myofascial-chains--01-overview.md.metadata.json",
+    ]
+
+
+def test_prune_deletes_the_document_before_its_sidecar(tmp_path: Path, s3_bucket) -> None:
+    """Order is a safety property, not a detail.
+
+    A `.md` left without its `.metadata.json` is a *silent* defect: Bedrock
+    re-embeds it with no attributes, so an unrated chunk sails through a
+    `min_evidence` filter. The reverse — a sidecar with no document — is inert.
+    A prune that dies half-way must die on the inert side.
+    """
+    docs = make_wide_corpus(tmp_path)
+    recorder = RecordingS3(s3_bucket)
+    syncer(recorder, FakeAgent([])).sync(tmp_path, start_ingestion=False)
+    drop(docs[0])
+
+    syncer(recorder, FakeAgent([])).sync(tmp_path, start_ingestion=False)
+
+    assert recorder.deleted == [
+        "corpus/anatomy/00-myofascial-chains--01-overview.md",
+        "corpus/anatomy/00-myofascial-chains--01-overview.md.metadata.json",
+    ]
+
+
+def test_prune_leaves_keys_outside_the_prefix_alone(tmp_path: Path, s3_bucket) -> None:
+    make_wide_corpus(tmp_path)
+    s3_bucket.put_object(Bucket=BUCKET, Key="backups/whatever.md", Body=b"not ours")
+
+    syncer(s3_bucket, FakeAgent([])).sync(tmp_path, start_ingestion=False)
+
+    assert "backups/whatever.md" in remote_keys(s3_bucket)
+
+
+def test_prune_can_be_switched_off(tmp_path: Path, s3_bucket) -> None:
+    """`prune=False` is the pre-fix behaviour, kept reachable and named."""
+    docs = make_wide_corpus(tmp_path)
+    syncer(s3_bucket, FakeAgent([])).sync(tmp_path, start_ingestion=False)
+    drop(docs[0])
+
+    report = syncer(s3_bucket, FakeAgent([])).sync(tmp_path, start_ingestion=False, prune=False)
+
+    assert report.pruned == []
+    assert "corpus/anatomy/00-myofascial-chains--01-overview.md" in remote_keys(s3_bucket)
+
+
+def test_sync_with_nothing_to_prune_issues_no_deletes(tmp_path: Path, s3_bucket) -> None:
+    make_wide_corpus(tmp_path)
+    recorder = RecordingS3(s3_bucket)
+    syncer(recorder, FakeAgent([])).sync(tmp_path, start_ingestion=False)
+
+    report = syncer(recorder, FakeAgent([])).sync(tmp_path, start_ingestion=False)
+
+    assert recorder.deleted == []
+    assert report.pruned == []
+
+
+def test_plan_prune_reports_orphans_without_touching_the_bucket(tmp_path: Path, s3_bucket) -> None:
+    """The audit path: what a prune *would* remove, with nothing removed."""
+    docs = make_wide_corpus(tmp_path)
+    recorder = RecordingS3(s3_bucket)
+    syncer(recorder, FakeAgent([])).sync(tmp_path, start_ingestion=False)
+    drop(docs[1])
+
+    orphans = syncer(recorder, FakeAgent([])).plan_prune(tmp_path)
+
+    assert [p.key for p in orphans] == [
+        "corpus/anatomy/01-myofascial-chains--01-overview.md",
+        "corpus/anatomy/01-myofascial-chains--01-overview.md.metadata.json",
+    ]
+    assert [p.sidecar for p in orphans] == [False, True]
+    assert recorder.deleted == []
+    assert len(remote_keys(s3_bucket)) == 40
+
+
+# ── The blast-radius guard ─────────────────────────────────────────────────
+# Remote-minus-local is only as safe as the local tree is trustworthy. Point it
+# at an unbuilt or half-built `build/kb` and the same diff wipes the corpus.
+
+
+def test_guard_refuses_to_wipe_the_bucket_for_an_empty_local_tree(
+    tmp_path: Path, s3_bucket
+) -> None:
+    from docpipe_core.kb_sync import BlastRadiusRefused
+
+    make_wide_corpus(tmp_path / "built")
+    recorder = RecordingS3(s3_bucket)
+    syncer(recorder, FakeAgent([])).sync(tmp_path / "built", start_ingestion=False)
+
+    empty = tmp_path / "unbuilt"
+    empty.mkdir()
+    with pytest.raises(BlastRadiusRefused) as exc:
+        syncer(recorder, FakeAgent([])).sync(empty, start_ingestion=False)
+
+    assert recorder.deleted == []
+    assert len(remote_keys(s3_bucket)) == 40
+    assert "40 of 40" in str(exc.value)
+    assert exc.value.ratio == 1.0
+
+
+def test_guard_refuses_a_half_built_corpus_and_names_the_numbers(tmp_path: Path, s3_bucket) -> None:
+    from docpipe_core.kb_sync import BlastRadiusRefused
+
+    docs = make_wide_corpus(tmp_path)
+    recorder = RecordingS3(s3_bucket)
+    syncer(recorder, FakeAgent([])).sync(tmp_path, start_ingestion=False)
+    for doc in docs[:15]:  # the build crashed after 5 of 20 chunks
+        drop(doc)
+
+    with pytest.raises(BlastRadiusRefused) as exc:
+        syncer(recorder, FakeAgent([])).sync(tmp_path, start_ingestion=False)
+
+    assert exc.value.ratio == pytest.approx(0.75)
+    assert exc.value.limit == pytest.approx(0.10)
+    assert "30 of 40" in str(exc.value)
+    assert "--max-delete-ratio" in str(exc.value)  # the escape hatch is in the message
+    assert recorder.deleted == []
+
+
+def test_guard_refuses_before_uploading_anything(tmp_path: Path, s3_bucket) -> None:
+    """A refusal means 'this tree is not trustworthy' — so nothing lands either."""
+    from docpipe_core.kb_sync import BlastRadiusRefused
+
+    docs = make_wide_corpus(tmp_path)
+    syncer(s3_bucket, FakeAgent([])).sync(tmp_path, start_ingestion=False)
+    for doc in docs[:15]:
+        drop(doc)
+    docs[19].write_text("# Chain 19\n\nEdited, and this edit must NOT land.\n")
+
+    with pytest.raises(BlastRadiusRefused):
+        syncer(s3_bucket, FakeAgent([])).sync(tmp_path, start_ingestion=False)
+
+    body = s3_bucket.get_object(
+        Bucket=BUCKET, Key="corpus/anatomy/19-myofascial-chains--01-overview.md"
+    )["Body"].read()
+    assert b"must NOT land" not in body
+
+
+def test_guard_never_starts_an_ingestion_job(tmp_path: Path, s3_bucket) -> None:
+    from docpipe_core.kb_sync import BlastRadiusRefused
+
+    docs = make_wide_corpus(tmp_path)
+    syncer(s3_bucket, FakeAgent([])).sync(tmp_path, start_ingestion=False)
+    for doc in docs[:15]:
+        drop(doc)
+
+    agent = FakeAgent(["STARTING", "COMPLETE"])
+    with pytest.raises(BlastRadiusRefused):
+        syncer(s3_bucket, agent).sync(tmp_path, wait=False)
+
+    assert agent.start_calls == []
+
+
+def test_guard_is_a_ratio_not_a_veto(tmp_path: Path, s3_bucket) -> None:
+    """A deliberate reshape (05-chunk-shape) says the number out loud and proceeds."""
+    docs = make_wide_corpus(tmp_path)
+    syncer(s3_bucket, FakeAgent([])).sync(tmp_path, start_ingestion=False)
+    for doc in docs[:15]:
+        drop(doc)
+
+    report = syncer(s3_bucket, FakeAgent([])).sync(
+        tmp_path, start_ingestion=False, max_delete_ratio=0.8
+    )
+
+    assert len(report.pruned) == 30
+    assert len(remote_keys(s3_bucket)) == 10
+
+
+def test_default_ratio_admits_the_biggest_routine_rename(tmp_path: Path, s3_bucket) -> None:
+    """10% is not arbitrary — measured against the 2026-08-14 corpus.
+
+    383 documents + 383 sidecars. The largest family a routine edit retires is
+    `body-graph-structure` at 31 chunks = 8.1%; every prose source-doc family is
+    ≤ 15 chunks = 3.9%. The 132-chunk `body-graph-connection` family is 34% and
+    is *meant* to need the flag: retiring a third of the corpus wants a human.
+    """
+    from docpipe_core.kb_sync import DEFAULT_MAX_DELETE_RATIO
+
+    assert 31 / 383 < DEFAULT_MAX_DELETE_RATIO < 132 / 383
+
+    docs = make_wide_corpus(tmp_path)
+    syncer(s3_bucket, FakeAgent([])).sync(tmp_path, start_ingestion=False)
+    drop(docs[0])  # 2 of 40 keys = 5%, under the default
+
+    report = syncer(s3_bucket, FakeAgent([])).sync(tmp_path, start_ingestion=False)
+
+    assert len(report.pruned) == 2

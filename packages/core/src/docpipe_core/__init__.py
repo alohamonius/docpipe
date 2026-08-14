@@ -8,9 +8,12 @@
 """
 
 from docpipe_core.kb_sync import (
+    DEFAULT_MAX_DELETE_RATIO,
+    BlastRadiusRefused,
     CorpusSyncer,
     IngestionOutcome,
     PlannedDoc,
+    PrunedKey,
     SyncAction,
     SyncReport,
     discover_corpus,
@@ -37,7 +40,9 @@ from docpipe_core.storage import DocumentStore, JobStore
 __version__ = "0.1.0"
 
 __all__ = [
+    "DEFAULT_MAX_DELETE_RATIO",
     "HEALTH_ASSISTANT_SYSTEM",
+    "BlastRadiusRefused",
     "ChatClient",
     "ChatMessage",
     "ChatReply",
@@ -52,6 +57,7 @@ __all__ = [
     "KnowledgeBaseClient",
     "ModelInvocationError",
     "PlannedDoc",
+    "PrunedKey",
     "QueueMessage",
     "RetrievedPassage",
     "SummarizerClient",

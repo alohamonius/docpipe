@@ -26,6 +26,9 @@ coverage.xml
 status.json
 dashboard.html
 
+# --- agent/run scratch: intermediate payloads, nothing durable ---
+.scratch/
+
 # --- misc ---
 .DS_Store
 *.zip

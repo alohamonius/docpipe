@@ -41,7 +41,7 @@ import sys
 from functools import cache
 from pathlib import Path
 
-from docpipe_core.kb_sync import CorpusSyncer
+from docpipe_core.kb_sync import DEFAULT_MAX_DELETE_RATIO, BlastRadiusRefused, CorpusSyncer
 
 # Default location of the Pulumi program, relative to the repo root.
 _DEFAULT_PULUMI_DIR = Path(__file__).resolve().parents[2] / "pulumi"
@@ -188,6 +188,18 @@ def _print_manifest(manifest: dict, root: Path) -> None:
         print(f"  chunks with no citation: {uncited}")
 
 
+def _print_prune(pruned, dry_run: bool) -> None:
+    """Deletions get their own block. They are the irreversible half."""
+    if not pruned:
+        print("\norphans in the bucket: none — it already equals this build")
+        return
+    verb = "would delete" if dry_run else "deleted"
+    documents = [p for p in pruned if not p.sidecar]
+    print(f"\n{verb}: {len(pruned)} orphaned key(s) — {len(documents)} document(s) + sidecars")
+    for doc in documents:
+        print(f"  − {doc.key}")
+
+
 def _print_report(report, dry_run: bool) -> None:
     verb = "would upload" if dry_run else "uploaded"
     print(f"\n{verb}: {len(report.uploaded)}   unchanged (skipped): {len(report.skipped)}")
@@ -229,6 +241,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-wait", action="store_true", help="start ingestion but don't poll to completion"
     )
+    parser.add_argument(
+        "--no-prune",
+        action="store_true",
+        help="leave keys the build no longer produces in the bucket (append-only, pre-2026-08-14)",
+    )
+    parser.add_argument(
+        "--max-delete-ratio",
+        dest="max_delete_ratio",
+        type=float,
+        default=DEFAULT_MAX_DELETE_RATIO,
+        help=(
+            "refuse the sync if a prune would remove more than this fraction of the "
+            f"keys under the prefix (default {DEFAULT_MAX_DELETE_RATIO:.0%}; 1.0 disables)"
+        ),
+    )
     return parser
 
 
@@ -258,15 +285,30 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.dry_run:
-        # plan() reads local files + HEADs S3 but never uploads or ingests.
+        # plan()/plan_prune() read local files + list/HEAD S3, and never mutate.
         report_docs = syncer.plan(root)
         from docpipe_core.kb_sync import SyncReport
 
         _print_report(SyncReport(docs=report_docs), dry_run=True)
+        if not args.no_prune:
+            _print_prune(syncer.plan_prune(root), dry_run=True)
         return 0
 
-    report = syncer.sync(root, start_ingestion=not args.no_ingest, wait=not args.no_wait)
+    try:
+        report = syncer.sync(
+            root,
+            start_ingestion=not args.no_ingest,
+            wait=not args.no_wait,
+            prune=not args.no_prune,
+            max_delete_ratio=args.max_delete_ratio,
+        )
+    except BlastRadiusRefused as refused:
+        # Not a crash — the guard doing its job. Say so, and say it loudly.
+        print(f"\n⛔ {refused}", file=sys.stderr)
+        return 2
     _print_report(report, dry_run=False)
+    if not args.no_prune:
+        _print_prune(report.pruned, dry_run=False)
     if report.ingestion is not None and not report.ingestion.succeeded and not args.no_wait:
         return 1  # ingestion FAILED / TIMEOUT — surface a non-zero exit for CI
     return 0
