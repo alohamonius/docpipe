@@ -169,20 +169,21 @@ guardrail `pjpeeu9hf68a`, invocation logging active. Gotchas in FINDINGS.md.
 
 ### Pre-flight — ordered, and all of it is free only while the KB is empty
 
-As of 2026-08-13 the source bucket held **0 objects** and the KB had run **0
-ingestion jobs**, so every corpus-shape decision is still reversible at zero
-cost. That stops being true after the first ingest. Do these in order:
+**Re-verified 2026-08-14:** the source bucket holds **0 objects** and the data
+source has run **0 ingestion jobs**, so every corpus-shape decision is still
+reversible at zero cost. That stops being true after the first ingest. Do these
+in order:
 
 - [ ] **BLOCKER — deployed config ≠ code.** The `NONE` change in
       `pulumi/components/kb.py` is now **committed** (`dbc3e8d`) and **asserted
-      by a test** (`5430984`, written red first) — but **not applied**. As last
-      verified 2026-08-13, the live data source `KPAQK6MQY4` reports
-      `FIXED_SIZE` (500 tokens / 20% overlap); *not re-verified since* — the
-      working shell's credentials were invalid on 2026-08-14 and the local
-      `aws` CLI is v1, which has no `bedrock-agent` command. Ingesting under
-      `FIXED_SIZE` strips the ★ legend and the "not a diagnosis" header off
-      every fragment after the first. `pulumi up` → **then** sync. The `up`
-      **replaces** the data source, so `dataSourceId` changes.
+      by a test** (`5430984`, written red first) — but **not applied**.
+      **Re-verified 2026-08-14** against the live stack: data source
+      `KPAQK6MQY4` is `AVAILABLE`, last updated 2026-08-12 23:02 UTC, and still
+      reports `chunkingStrategy: FIXED_SIZE` (`maxTokens: 500`,
+      `overlapPercentage: 20`). Ingesting under `FIXED_SIZE` strips the ★ legend
+      and the "not a diagnosis" header off every fragment after the first.
+      `pulumi up` → **then** sync. The `up` **replaces** the data source, so
+      `dataSourceId` changes.
 - [ ] **The chunking test does not check AWS.** `test_kb_chunking_contract.py`
       parses the component's AST, by design (FINDINGS.md, 2026-08-14) — a
       console edit to the live data source would pass it green. Closing that

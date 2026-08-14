@@ -471,10 +471,39 @@ Reading the code to answer properly turned up a gap the plan did not list.
   *deployed* are three separate claims and the plan now states each separately —
   the AST-based contract test deliberately does not check AWS, so nothing in CI
   can collapse them for us.
-- **Could not verify live AWS state during this pass.** The working shell's
-  credentials returned `UnrecognizedClientException`, and the installed `aws`
-  CLI is v1 — it has no `bedrock-agent` command, so `get-data-source` and
-  `list-ingestion-jobs` are unavailable from it. `.venv/bin/python` has a boto3
-  new enough for both. Recorded so the next session does not repeat the loop:
-  refresh credentials first, and drive Bedrock control-plane calls through
-  boto3, not the system `aws`.
+- **Could not verify live AWS state during this pass.** ~~The working shell's
+  credentials returned `UnrecognizedClientException`~~ — **RETRACTED 2026-08-14,
+  same session.** The credentials were fine; the call was wrong. boto3 was
+  invoked with no profile, so it fell through to the ambient chain instead of
+  the `docpipe` profile the stack uses (`Pulumi.dev.yaml:5`). `AWS_PROFILE=docpipe`
+  and every call succeeded. **`UnrecognizedClientException` here meant "wrong
+  identity", not "expired credentials"** — and the reflex it triggered,
+  `aws sso login --profile docpipe`, was wrong twice over: `docpipe` is a static
+  IAM user key, not an SSO profile, so there is no login to refresh. Two
+  minutes were spent on a nonexistent auth problem, and a stale reading was
+  nearly committed as current because of it.
+  **The part that stands:** the installed `aws` CLI is v1 and has no
+  `bedrock-agent` command, so `get-data-source` / `list-ingestion-jobs` are
+  unavailable from it; `.venv/bin/python` has a boto3 new enough for both.
+  Next session: `AWS_PROFILE=docpipe .venv/bin/python`, and read the error
+  before believing it.
+
+**Live state, measured 2026-08-14** (`AWS_PROFILE=docpipe .venv/bin/python`,
+boto3, us-east-1). This is the reading the entry above nearly failed to take:
+
+| | |
+|---|---|
+| KB `SJQAFQXPH7` | `ACTIVE`, storage `S3_VECTORS` |
+| Embedding | `amazon.titan-embed-text-v2:0`, `dimensions: 1024`, `FLOAT32` |
+| Data source `KPAQK6MQY4` | `AVAILABLE`, updated 2026-08-12 23:02 UTC |
+| Chunking **(live)** | `FIXED_SIZE`, `maxTokens: 500`, `overlapPercentage: 20` |
+| Ingestion jobs | **0** |
+| Source bucket `docpipe-dev-kb-source-<account-id>` | **0 objects** |
+
+Three things this settles. The KB's embedding config **matches the plan
+exactly** — Titan v2 @ 1024 FLOAT32 — so that decision needs no re-verification.
+The `NONE` chunking fix is **still unapplied**: committed `dbc3e8d`, asserted
+`5430984`, and the deployed data source has not moved since 2026-08-12, which is
+the clearest possible demonstration of why the AST test cannot stand in for a
+`describe_data_source` check. And **nothing is ingested** — 0 objects, 0 jobs —
+so the pre-flight's premise holds and every corpus-shape decision is still free.
