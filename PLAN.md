@@ -68,22 +68,35 @@ Lambda or API Gateway.
 
 Execution order, and what each step is actually blocked on:
 
-1. **Shrink the oversized graph chunks upstream** (health.studio) — decided
-   2026-08-14, and the fix changed once measured: **move `Sources` out of the
-   embedded body into the metadata sidecar**, rather than splitting files.
-   Sources is the single largest section in the corpus (39,717w across the 132
-   connection docs, ~301w each) and it is bibliography competing with clinical
-   content for one vector. Dropping it from the body takes graph chunks >2,000w
-   from **19 → 2** and renames **nothing** — so it carries none of the
-   orphan-vector risk a split does. Cross-repo; no AWS.
-2. **`pulumi up`** — apply the already-committed `NONE` chunking (`dbc3e8d`) and
+1. **`pulumi up`** — apply the already-committed `NONE` chunking (`dbc3e8d`) and
    guardrail wiring (`ff6c91f`). Replaces the data source; `dataSourceId` changes.
-3. **First ingest** into the S3 Vectors KB.
-4. **Golden set** — 30–50 `question → expected-passage(s)` pairs. Blocked on
-   nothing except the corpus being final, entirely offline, and the single
-   biggest hole in the project: there is no evaluation story at all today.
+2. **First ingest** into the S3 Vectors KB, **of the corpus as it stands.**
+3. **Golden set** — 30–50 `question → expected-passage(s)` pairs, scored against
+   that first ingest, which is the **control group**. Blocked on nothing except
+   the corpus being final, entirely offline, and the single biggest hole in the
+   project: there is no evaluation story at all today.
+4. **Shrink the oversized graph chunks upstream** (health.studio) — **move
+   `Sources` out of the embedded body into a non-filterable metadata sidecar
+   attribute**, rather than splitting files. Sources is the single largest
+   section in the corpus (39,717w across the 132 connection docs, ~301w each)
+   and it is bibliography competing with clinical content for one vector.
+   Dropping it from the body takes graph chunks >2,000w from **19 → 2** and
+   renames **nothing** — so it carries none of the orphan-vector risk a split
+   does. **This step needs AWS after all** and it needs work here, not only
+   upstream: see the two blockers in FINDINGS.md 2026-08-14 (`RetrievedPassage`
+   has no `sources` field, and the S3 Vectors index declares no
+   `metadataConfiguration`, so nothing is non-filterable and the 2 KB cap bites).
+   Land the consumer half before or with the producer half, never after.
 5. **Aurora** — the five gaps in Phase 2, then a second KB over the same bucket.
 6. **Measure** — recall@k / MRR / p50 / p95 / $, plus the `hnsw.ef_search` sweep.
+
+> **Order corrected 2026-08-14 (human ruling).** Steps 1–4 were 2–4 then 1: the
+> corpus reshape led, on the argument that it was "free before the first ingest".
+> That is the *rename* hazard, and this change renames nothing — an orphan comes
+> from a changed key, not changed content. What the old order did cost was the
+> baseline: reshaping first leaves nothing to score the reshape against. Ingest
+> first, measure, then reshape against a control. Tracked as
+> `kb-retrieval-readiness/04-embedding-payload` in how2doo.
 
 Phases are deliberately **not renumbered**: FINDINGS.md and `docs/interview/`
 reference them by number. Only the execution order changed.
@@ -222,10 +235,16 @@ in order:
       86 → 70, while renaming **zero** files. Splitting would rename ~86, and a
       rename after ingest strands vectors that keep retrieving as current text
       (`CorpusSyncer` never deletes). Handed to a health.studio agent.
-      **Unverified and it blocks:** sidecars are already ≤1,705 B against S3
-      Vectors' **2 KB filterable-metadata cap**, and this adds the largest
-      attribute yet. Must be measured against a real ingestion, not assumed.
-      Whether the 2 remaining >2k chunks need splitting is a later call.
+      **Two blockers, found 2026-08-14 — see FINDINGS.md.** (A) `retrieval.py`'s
+      `RetrievedPassage` has no `sources` field and `_passage_of` never reads
+      one, so the producer half alone stores the bibliography and never returns
+      it. (B) `kb.py` creates the S3 Vectors index with no `metadataConfiguration`,
+      so **no key is non-filterable** and the 2 KB filterable cap applies to all
+      of them; the largest bibliography is ~12 KB. `includeForEmbedding: false`
+      does not address this — different axis. Sidecars are already ≤1,705 B, so
+      there is no headroom to absorb it either. Both must land here before the
+      upstream change ships. Whether the 2 remaining >2k chunks need splitting is
+      a later call.
 - [ ] Re-run `--dry-run` to confirm the new distribution, then one ingest.
 
 ### Known gaps in the sync path

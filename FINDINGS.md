@@ -507,3 +507,60 @@ The `NONE` chunking fix is **still unapplied**: committed `dbc3e8d`, asserted
 the clearest possible demonstration of why the AST test cannot stand in for a
 `describe_data_source` check. And **nothing is ingested** — 0 objects, 0 jobs —
 so the pre-flight's premise holds and every corpus-shape decision is still free.
+
+## 2026-08-14 — the bibliography fix is unshippable as planned, and it is not urgent
+
+Correcting `f1a85e3` (*"the oversized-chunk fix is not a split, it is the
+bibliography"*) and the PLAN.md step-1 it wrote. The **measurement** in that
+commit stands and is good; the **plan built on it** has two blockers it did not
+find, and the urgency it claimed is not real. Read against both trees rather
+than re-derived, at the request of how2doo's `kb-retrieval-readiness` set, which
+owns this objective as goal `04-embedding-payload`.
+
+**What survives.** By-section over the 132 `body-graph-connection--*` docs:
+`Sources` 39,717w (301/doc) is the single largest section in the corpus, ahead
+of Key clinical connections 38,110w and Anatomy 36,621w. Excluding it from the
+embedded body, modelled over all 191 graph chunks: p50 652→557, p90 1,994→1,358,
+max 3,692→2,402, `>1k` 86→70, `>2k` **19→2**, with zero files renamed. The
+producer-side mechanism is real: `health.studio` `stamp.ts:144-168`
+(`metadataFor`) already emits every attribute as `{ value, includeForEmbedding }`
+and `MetadataValue` already has `STRING_LIST` (`stamp.ts:21`); the six `Sources`
+emitters are at `graph.ts:220` (connection groups), `:257` (chains), `:359`
+(nerves), `:439` (entrapments), `:513` (joints), `:577` (referral sources).
+
+**BLOCKER A — nothing on this side would deliver it.**
+`packages/core/src/docpipe_core/retrieval.py:39-52` defines `RetrievedPassage`
+with a **fixed** list of seven sidecar fields and no `sources`; `_passage_of`
+(`:101-114`) never reads one, and `citation` (`:54-64`) never renders one. The
+plan says "docpipe's `RetrievedPassage` will parse it" — future tense, other
+repo, unowned. Ship the health.studio half alone and the bibliography is stored
+and never returned: the citation trail disappears from what the model and the
+reader receive. That is the same bare-evidence failure the `NONE` chunking rule
+exists to prevent, arriving through the sidecar instead of through a splitter.
+
+**BLOCKER B — `includeForEmbedding: false` does not buy non-filterable.**
+`pulumi/components/kb.py:80-89` constructs `S3VectorsIndex` with **no
+`metadataConfiguration` block at all**, so no key is declared non-filterable and
+the 2 KB filterable cap applies to every attribute. The largest bibliography is
+~1,832w ≈ 12 KB — it cannot fit. `includeForEmbedding` and filterability are
+different axes and only the second one has that cap; `f1a85e3` filed the cap as
+"unverified and it blocks" but read it as a measurement to take after the change,
+when it is a config precondition before it. Non-filterable keys are declared at
+index creation, so this is a Pulumi index change (expect a replace), not the
+"cross-repo; no AWS" the plan promised. *Not yet verified:* that the key set is
+immutable post-creation. The absence of the declaration is read from the file;
+the immutability is not — confirm against the API before relying on it.
+
+**The urgency was misattributed.** "Free right now, stops being free after the
+first ingest" is the **rename** hazard — and this change renames nothing, as the
+commit itself says. An orphan comes from a changed *key*, not changed *content*:
+S3 overwrites a re-PUT key in place and Bedrock re-embeds it. There is no
+expiring window here. The reverse is true and was missed: landing the reshape
+before the first ingest means there is no pre-change baseline to score it
+against, so the quality claim ("a real retrieval win") becomes permanently
+unfalsifiable.
+
+**Ruling — human, 2026-08-14: ingest as-is first.** PLAN.md's execution order
+inverts. `pulumi up` → first ingest → golden set scored on the **current**
+corpus as the control → *then* the bibliography move, with a signed delta
+against that control. The corpus reshape is no longer step 1.
