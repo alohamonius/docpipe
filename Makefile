@@ -1,4 +1,4 @@
-.PHONY: sync fmt lint typecheck test status infra-preview infra-up infra-down aurora-bootstrap
+.PHONY: sync fmt lint typecheck test status kb-eval infra-preview infra-up infra-down aurora-bootstrap
 
 sync:
 	uv sync --all-packages
@@ -18,6 +18,19 @@ test:
 # Live stack snapshot → status.json + dashboard.html (both gitignored).
 status:
 	uv run --with boto3 python scripts/status.py
+
+# Score the live KB against health.studio's held-out question set — the number
+# that makes 04-embedding-payload and 05-chunk-shape report a signed delta
+# instead of an opinion. One retrieval call per question (63 today), so it
+# costs real money and needs a live index: nothing has been ingested yet.
+# Refuses an unratified answer key; pass DRY=--dry-run to rehearse the harness.
+QUESTIONS ?= ../health.studio/apps/web/src/lib/kb/eval/questions.json
+KB_ID ?=
+OUT ?= .scratch/kb-eval.json
+DRY ?=
+kb-eval:
+	uv run --with boto3 python scripts/kb_eval.py \
+		--questions $(QUESTIONS) --kb-id $(KB_ID) --out $(OUT) $(DRY)
 
 # Infra targets operate on the dev stack (see pulumi/README.md for backend login).
 #
