@@ -858,3 +858,54 @@ enough to be type-checked.
 The fix site is `health.studio`'s `apps/web/scripts/build-kb.ts` +
 `src/lib/kb/stamp.ts`; the behaviour is docpipe's ingestion path, so the finding
 lives here and is referenced from there.
+
+### 2026-08-16, same day — the ingest landed, and `STRING_LIST` is settled
+
+Job `UAPFGFPWDZ`, after shrinking the sidecars in `health.studio`
+(`stamp.ts` drops `docId` + `collection`; `build-kb.ts` writes minified):
+
+```
+numberOfDocumentsScanned    : 383
+numberOfNewDocumentsIndexed : 383
+numberOfDocumentsFailed     : 0
+failureReasons              : []
+
+s3vectors list_vectors → 383 vectors        # the check that matters
+sidecar budget: largest 917 B (107 B headroom)
+```
+
+**`STRING_LIST` is supported on S3 Vectors.** The open risk recorded above is
+closed by measurement, not by argument: a live vector carries
+`verification: ["VERIFIED"]`. The re:Post thread reporting otherwise is wrong,
+or was fixed. No flattening in `stamp.ts` is needed, and the runbook's
+`failed: 383` row can be struck.
+
+**Chunking `NONE` confirmed end-to-end.** `AMAZON_BEDROCK_TEXT` on a live vector
+is 4,968 chars — a whole chunk, evidence legend intact, not a 500-token fragment.
+
+**Filtering survived the non-filterable declaration.** The thing that could have
+been silently traded away was not:
+
+| query | hits | `maxEvidence` values returned |
+|---|---|---|
+| unfiltered | 5 | 3, 3, **0**, 3, 3 |
+| `maxEvidence >= 2` | 5 | 3, 3, 3, 3, **2** |
+| `safetyCritical = true` | 5 | 1, 1, 3, 1, 1 |
+
+**`NUMBER` comes back as a float.** `maxEvidence` is `3.0`, not `3` — S3 Vectors
+round-trips Bedrock's NUMBER type as a float. `retrieval.py::_as_int` already
+handles it (`isinstance(value, float) and value.is_integer()`), so nothing
+breaks; noted because a stricter `isinstance(v, int)` would have silently
+disabled every evidence filter while looking like it worked.
+
+**Which attributes are safe to drop, and which only look safe.** `docId` and
+`collection` are read by nothing — not `retrieval.py`, not `kb-census.ts`.
+`kind` looks identical from `retrieval.py`'s side (it never reads it) and is
+**not** droppable: `kb-census.ts:205` groups the census by it. Check both
+consumers, not one.
+
+**The durable guard is `assertSidecarBudget`** in `health.studio`'s
+`build-kb.ts`: the build now fails if any sidecar exceeds 1,024 B, naming the
+worst offenders. Headroom is 107 B — roughly one long document title — so the
+gate, not the fix, is what keeps this from recurring. It converts a silent
+total loss discovered three steps downstream into a local build error.

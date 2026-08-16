@@ -21,8 +21,13 @@ corpus (post-06), not quoted from the pre-06 review.
 | Index non-filterable keys | ✅ applied, verified `["AMAZON_BEDROCK_TEXT","AMAZON_BEDROCK_METADATA"]` |
 | Live ids | KB `JDNNGSU1JT`, ds `U0PM4HIXGE` (both replaced; `SJQAFQXPH7` is dead) |
 | Uploaded | ✅ 766 objects in `docpipe-dev-kb-source-733866507398` |
-| Ingested | ❌ **blocked** — job `KWZPC25FGS` `COMPLETE` but 0 vectors: all 383 sidecars exceed the 1 KB metadata cap |
-| Baseline | ❌ not taken — blocked on the above |
+| Ingested | ✅ job `UAPFGFPWDZ` — **383 vectors live**, `failed 0`, verified by `list_vectors` |
+| Baseline | ⏳ next — `make kb-eval KB_ID=JDNNGSU1JT` |
+
+The first attempt (`KWZPC25FGS`) reported `COMPLETE` and wrote **0** vectors —
+all 383 sidecars were over the 1 KB metadata cap and were *ignored*, not failed.
+Fixed in `health.studio` (`stamp.ts` drops `docId`/`collection`; `build-kb.ts`
+minifies and now enforces `assertSidecarBudget`). See `FINDINGS.md`.
 
 Both pending items are in the **same** `pulumi up`. Do not apply one alone —
 see *Why both, together* below.
@@ -153,7 +158,7 @@ else, read this table before changing anything:
 |---|---|---|
 | `ClientError (403) … HeadObject` before any count | `AWS_PROFILE=docpipe` is missing — see *Before you start* | re-run with the prefix; nothing was written |
 | `COMPLETE`, `indexed 0`, `failed 0`, `failureReasons: Ignored 383 files … 1024 bytes` | **the sidecars exceed the 1 KB metadata cap** — hit for real 2026-08-16 | shrink the sidecar in `health.studio` `build-kb.ts`; minifying alone clears only 34 of 383. See `FINDINGS.md` for the priced variants |
-| `failed: 383` | `STRING_LIST` is rejected on S3 Vectors — see *Open risk* | flatten `verification` to a comma-joined `STRING` in `stamp.ts`; nothing downstream filters on it |
+| ~~`failed: 383`~~ | ~~`STRING_LIST` is rejected~~ — **struck 2026-08-16: `STRING_LIST` works, measured** | — |
 | `failed: ~241` | the non-filterable keys did not take | `aws s3vectors get-index` (via boto3) and check `metadataConfiguration`; if absent, `_KEYS` did not fire |
 | `failed: 0`, chunks look fragmented on retrieval | chunking is not `NONE` | `get_data_source` and check `chunkingStrategy` |
 
@@ -240,17 +245,23 @@ human ruling of 2026-08-14.
 
 ---
 
-## Open risk, to be settled by the first job
+## ~~Open risk~~ — settled 2026-08-16 by job `UAPFGFPWDZ`
 
-**`STRING_LIST` on S3 Vectors.** All 383 sidecars carry `verification` as
-`STRING_LIST`. Sources conflict: a practitioner write-up lists STRING_LIST among
-the four supported Bedrock-KB types, while an AWS re:Post thread reports it
-working on pgvector and **not** on S3 Vectors (that page 403s to automated
-fetch — read it by hand if the job fails). Do **not** pre-emptively change it:
-if it is rejected it fails all 383 loudly, and `verification` is the one
-attribute no filter reads (`retrieval.py` filters only on `maxEvidence` and
-`safetyCritical`), so flattening it costs nothing downstream. Cheaper to learn
-than to guess.
+**`STRING_LIST` on S3 Vectors works.** All 383 sidecars carry `verification` as
+`STRING_LIST`; a live vector returns `verification: ["VERIFIED"]`. The AWS
+re:Post thread reporting it broken on S3 Vectors is wrong or stale. No change to
+`stamp.ts` was needed — and the decision *not* to pre-emptively flatten it was
+the right one: guessing would have cost a real attribute for nothing.
+
+Also confirmed on the same job, each of which could have failed quietly:
+
+- **Chunking `NONE` end-to-end** — `AMAZON_BEDROCK_TEXT` is 4,968 chars on a live
+  vector, a whole chunk with its evidence legend, not a fragment.
+- **Filtering still works** despite the non-filterable declaration —
+  `maxEvidence >= 2` and `safetyCritical = true` both change the result set.
+- **`NUMBER` round-trips as a float** (`3.0`, not `3`). `retrieval.py::_as_int`
+  already handles it; a stricter int check would have silently disabled every
+  evidence filter while appearing to work.
 
 ---
 
