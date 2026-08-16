@@ -22,7 +22,7 @@ corpus (post-06), not quoted from the pre-06 review.
 | Live ids | KB `JDNNGSU1JT`, ds `U0PM4HIXGE` (both replaced; `SJQAFQXPH7` is dead) |
 | Uploaded | ✅ 766 objects in `docpipe-dev-kb-source-733866507398` |
 | Ingested | ✅ job `UAPFGFPWDZ` — **383 vectors live**, `failed 0`, verified by `list_vectors` |
-| Baseline | ⏳ next — `make kb-eval KB_ID=JDNNGSU1JT` |
+| Baseline | ✅ taken 2026-08-16 — **recall@5 0.7879 · MRR 0.5538 · stamp 1.0**, report at `docs/baselines/2026-08-16-s3vectors-baseline.json`; exits 1 by design (6 confabulations — see FINDINGS) |
 
 The first attempt (`KWZPC25FGS`) reported `COMPLETE` and wrote **0** vectors —
 all 383 sidecars were over the 1 KB metadata cap and were *ignored*, not failed.
