@@ -123,7 +123,47 @@ def test_min_evidence_becomes_a_bedrock_filter() -> None:
     KnowledgeBaseClient("kb-123", agent_runtime_client=fake).retrieve("q", min_evidence=1)
 
     search = fake.calls[0]["retrievalConfiguration"]["vectorSearchConfiguration"]
-    assert search["filter"] == {"greaterThanOrEquals": {"key": "maxEvidence", "value": 1}}
+    assert search["filter"] == {
+        "orAll": [
+            {"greaterThanOrEquals": {"key": "maxEvidence", "value": 1}},
+            {"equals": {"key": "safetyCritical", "value": True}},
+        ]
+    }
+
+
+def test_the_evidence_floor_never_filters_out_a_safety_critical_chunk() -> None:
+    """The assertion this module exists to keep.
+
+    health.studio's machine-readable red-flag screen is ``maxEvidence: 0`` and
+    ``safetyCritical: true`` — it carries the cardiac row routing chest/left-arm
+    pain to the ER, and a red-flag screen has no trial to cite, so it can never
+    earn a star. Under a flat ``greaterThanOrEquals`` floor it is the FIRST
+    thing deleted, and the caller asking for it is someone trying to raise
+    quality.
+
+    Asserted at every floor, not just 1: a bare ``>= 3`` would pass a test
+    written only against 1 while still dropping the screen.
+    """
+    for floor in (1, 2, 3):
+        fake = FakeAgentRuntime([])
+        KnowledgeBaseClient("kb-123", agent_runtime_client=fake).retrieve("q", min_evidence=floor)
+
+        search = fake.calls[0]["retrievalConfiguration"]["vectorSearchConfiguration"]
+        arms = search["filter"]["orAll"]
+        assert {"equals": {"key": "safetyCritical", "value": True}} in arms, (
+            f"min_evidence={floor} sends a filter with no safety exemption — "
+            "the red-flag screen would be dropped"
+        )
+
+
+def test_the_floor_still_applies_to_everything_else() -> None:
+    """The exemption is one arm, not a bypass — the floor is still requested."""
+    fake = FakeAgentRuntime([])
+    KnowledgeBaseClient("kb-123", agent_runtime_client=fake).retrieve("q", min_evidence=2)
+
+    arms = fake.calls[0]["retrievalConfiguration"]["vectorSearchConfiguration"]["filter"]["orAll"]
+    assert {"greaterThanOrEquals": {"key": "maxEvidence", "value": 2}} in arms
+    assert len(arms) == 2
 
 
 def test_no_filter_is_sent_by_default() -> None:
