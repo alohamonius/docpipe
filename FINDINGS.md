@@ -909,3 +909,68 @@ consumers, not one.
 worst offenders. Headroom is 107 B — roughly one long document title — so the
 gate, not the fix, is what keeps this from recurring. It converts a silent
 total loss discovered three steps downstream into a local build error.
+
+## 2026-08-16 — the baseline: 0.7879, and the exit code is the corpus's known defect being measured, not a bug
+
+First scored run against the live KB (`JDNNGSU1JT`, job `UAPFGFPWDZ`'s 383
+vectors, ratified key, k=5, `min_evidence: null`). The full signed report is
+committed at `docs/baselines/2026-08-16-s3vectors-baseline.json` — the control
+every later change is scored against. Headline:
+
+```
+recall@5 0.7879 · MRR 0.5538 · stamp integrity 1.0 (330/330)
+prose 1.0 · graph-structure 1.0 · graph-referral-source 1.0
+graph-connection 0.6 · not-covered 0.0 (abstention 0.0)
+hits by rank: #1 ×28 · #2 ×8 · #3 ×9 · #4 ×3 · #5 ×4
+```
+
+**`make kb-eval` exits 1 on purpose.** `forbidden_violations` is non-empty —
+all six `gap-*` questions returned a chunk from their `must_not_return` — and
+the harness treats confabulation as failing. Correct behaviour, and the exact
+defect health.studio's FINDINGS predicted on 2026-08-16 ("an evidence floor
+would delete the abstention machinery"): raw vector retrieval cannot abstain.
+The five not-covered questions expect `graph/body-graph-index.md` — the
+closed-world chunk whose whole content is "a connection absent from this list
+is one the system does not know" — and it came back for **none of them**.
+Nearest-neighbour muscles came back instead: asked about a nerve the corpus
+doesn't model (gap-01), it returns five nerves it does; asked about hip ROM
+(gap-06), it returns the shoulder joint. Abstention 0.0.
+
+**gap-04 (cardiac) is the nuance worth reading precisely.** It HIT — the
+machine-readable red-flag screen is at rank 3 — but rank 1 is
+`referral-source--diaphragm_referral`, which is in its `must_not_return`. The
+predicted scalenes/upper-body confounders never appeared; the actual violator
+was a different referral-source chunk. So the ER answer is *present but
+outranked* by a reassuring look-alike. That is a ranking problem, not a
+coverage problem, and it is precisely what a reranker or the safety-pin
+filter is for.
+
+**The nine real misses cluster, and the cluster is the payload argument.**
+6 of 15 graph-connection questions missed, plus chain-03, nerve-04, entr-02.
+Two shapes:
+
+- *Lost to prose that legitimately covers the topic* (conn-07 arch→foot-core,
+  conn-08 breathing→the mechanism chunk, chain-03 balance→vision-and-balance).
+  A human might call these right answers; the key says the graph chunk should
+  win for a "which muscle" question. Ranking, not absence.
+- *Lost to an oversized referral-source chunk stuffed with symptom vocabulary*:
+  conn-09 ("deep buttock pain shooting down the leg" → **uterus_prostate** at
+  rank 1, piriformis nowhere in top 5), nerve-04 (forehead/eye pain →
+  **paranasal_sinus** over trigeminocervical). These are the largest chunks in
+  the corpus (2,435–2,626 words, ~half bibliography) winning queries they
+  shouldn't. This is the measured version of the dilution the bibliography
+  finding predicted — now it has victim question ids, not just word counts.
+
+**What held.** `stamp_integrity` 1.0 over all 330 returned passages: every
+passage arrived carrying its complete evidence legend — `NONE` chunking
+verified at the retrieval end, not just at ingestion. Prose recall is perfect;
+the graph's structure and referral-source strata are perfect on their *own*
+questions (the referral sources retrieve fine when they're the answer — the
+problem is they also retrieve when they're not).
+
+Next moves this baseline prices, none started: the bibliography move (now with
+conn-09/nerve-04 as its before/after probes, and only buildable on the Aurora
+KB), a reranker on the retrieve path (no re-ingest), and an abstention
+mechanism (score threshold or making `body-graph-index` findable) for the
+not-covered class. Each is now a signed delta against 0.7879, which was the
+entire point of running the baseline first.
