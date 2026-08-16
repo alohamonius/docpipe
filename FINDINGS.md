@@ -974,3 +974,49 @@ KB), a reranker on the retrieve path (no re-ingest), and an abstention
 mechanism (score threshold or making `body-graph-index` findable) for the
 not-covered class. Each is now a signed delta against 0.7879, which was the
 entire point of running the baseline first.
+
+## 2026-08-16 — miss-rank probe: 7 of the 9 baseline misses sit at rank 7–19
+
+The baseline says *what* missed; it can't say *how far* a miss was. One
+read-only probe answers that: re-run the 9 missed questions (misses = expected
+chunk absent from top-5, not-covered class excluded) through the identical
+shipped path at `top_k=25` and record the expected chunk's true rank.
+
+```
+uv run --with boto3 python .scratch/kb-miss-rank-probe.py   # 9 retrieve calls
+```
+
+| question | expected chunk | rank @25 |
+|---|---|---|
+| conn-06 | connection--sternocleidomastoid | 7 |
+| conn-08 | connection--diaphragm | 8 |
+| conn-09 | connection--piriformis | **11** |
+| conn-10 | connection--quadratus_lumborum | 11 |
+| entr-02 | entrapment--thoracic_outlet | 12 |
+| conn-07 | connection--tibialis_posterior | 13 |
+| nerve-04 | nerve--trigeminocervical | 19 |
+| conn-04 | connection--scalenes | absent |
+| chain-03 | chain--LL | absent |
+
+**Consequence: a reranker over a widened pool (retrieve 25 → rerank → cut to
+5) has 7 rescuable misses to work with, conn-09 and nerve-04 included.** Ceiling
+if it rescues all 7: recall@5 0.7879 → ~0.96 on the answerable set. No corpus
+change, no re-ingest — this is the cheap lever, and it now has a measured upper
+bound instead of a hope.
+
+The two absent-at-25 misses fail differently and a reranker cannot touch them:
+
+- **conn-04** (scalenes): loses to its own neighbors — top-3 are temporalis,
+  deep_neck_flexors, levator_scapulae. The embedding puts a dozen neck-region
+  connection chunks in a tight cluster and scalenes isn't the nearest; only
+  changing what gets embedded (bibliography strip / chunk rewrite) moves it.
+- **chain-03** ("a line that handles side-to-side balance" → chain--LL): a
+  vocabulary gap, not dilution — top-3 are balance/vision prose and the
+  meridians overview. The Lateral Line chunk evidently never says "side-to-side
+  balance" in words the embedding can latch onto. Fix is content-side phrasing
+  (or the reranker's query-document attention, but at rank >25 it never enters
+  the pool).
+
+So the roadmap's two levers now have a clean division of labour: reranker for
+the 7 near-misses, corpus work (bibliography move on Aurora, phrasing fixes)
+for the 2 deep ones. Probe artifacts: `.scratch/kb-miss-rank-probe.{py,json}`.
