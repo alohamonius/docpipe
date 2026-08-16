@@ -57,7 +57,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from .kb_sync import DEFAULT_PREFIX
-from .retrieval import KnowledgeBaseClient, RetrievedPassage
+from .retrieval import DEFAULT_RERANK_POOL, KnowledgeBaseClient, RetrievedPassage
 
 # ── The stamp, as `stamp.ts` writes it ─────────────────────────────────────
 #
@@ -199,6 +199,12 @@ class EvalReport(BaseModel):
     k: int
     n: int
     min_evidence: int | None
+    # Recorded so a report is self-describing: a reranked score and a raw one
+    # are different experiments, and a number that doesn't say which it is
+    # cannot be compared against the baseline. Defaults keep the committed
+    # 2026-08-16 baseline (written before these fields existed) loadable as-is.
+    rerank: bool = False
+    rerank_pool: int | None = None
     knowledge_base_id: str
     question_set: dict[str, Any]
     overall: StratumScore
@@ -233,6 +239,8 @@ def score_question_set(
     *,
     k: int = 5,
     min_evidence: int | None = None,
+    rerank: bool = False,
+    rerank_pool: int = DEFAULT_RERANK_POOL,
     prefix: str = DEFAULT_PREFIX,
     require_ratified: bool = True,
 ) -> EvalReport:
@@ -249,7 +257,13 @@ def score_question_set(
 
     results: list[QuestionResult] = []
     for question in question_set.questions:
-        passages = client.retrieve(question.question, top_k=k, min_evidence=min_evidence)
+        passages = client.retrieve(
+            question.question,
+            top_k=k,
+            min_evidence=min_evidence,
+            rerank=rerank,
+            rerank_pool=rerank_pool,
+        )
         keys = [chunk_key_of(p, prefix) for p in passages]
         returned = [key for key in keys if key is not None]
 
@@ -284,6 +298,8 @@ def score_question_set(
         k=k,
         n=len(results),
         min_evidence=min_evidence,
+        rerank=rerank,
+        rerank_pool=rerank_pool if rerank else None,
         knowledge_base_id=client.knowledge_base_id,
         question_set={
             "version": question_set.version,

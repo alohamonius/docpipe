@@ -35,6 +35,20 @@ _VERIFICATION = "verification"
 _CITATION_COUNT = "citationCount"
 _SAFETY_CRITICAL = "safetyCritical"
 
+# The only rerank model Bedrock offers ON_DEMAND in us-east-1 (measured
+# 2026-08-16). A cross-encoder: it reads query and passage *together*, so it can
+# rank on meaning the bi-encoder embedding blurred — which is exactly the
+# corpus's failure mode, where bibliography-heavy graph chunks outrank the right
+# answer on embedding distance alone.
+RERANK_MODEL_ID = "cohere.rerank-v3-5:0"
+
+# Sized from the 2026-08-16 miss-rank probe (FINDINGS.md): of the 9 baseline
+# misses, 7 sat at rank 7–19 on raw embedding distance — inside a pool of 25 —
+# and the other 2 were absent even at 25. A pool this size therefore gives the
+# reranker every rescuable miss while keeping the per-query rerank cost at one
+# 25-document call.
+DEFAULT_RERANK_POOL = 25
+
 
 class RetrievedPassage(BaseModel):
     text: str
@@ -77,8 +91,23 @@ class KnowledgeBaseClient:
         top_k: int = 4,
         *,
         min_evidence: int | None = None,
+        rerank: bool = False,
+        rerank_pool: int = DEFAULT_RERANK_POOL,
     ) -> list[RetrievedPassage]:
         """Retrieve passages, optionally refusing anything below an evidence floor.
+
+        ``rerank=True`` widens the vector search to ``rerank_pool`` candidates
+        and has Bedrock's ``cohere.rerank-v3-5`` cross-encoder re-read them
+        against the query before cutting back to ``top_k`` — one server-side
+        call, same response shape, nothing changes for the caller. The pool
+        must be wider than ``top_k`` or the reranker can only reorder the same
+        near-misses it was meant to rescue; anything at rank > pool never
+        enters the pool and cannot be recovered by reranking at all.
+
+        Reranking runs under the **KB service role**, not the caller — Bedrock
+        assumes ``<prefix>-kb-role`` for the rerank step, so that role needs
+        ``bedrock:Rerank`` plus ``InvokeModel`` on the rerank model (see
+        ``pulumi/components/kb.py``; a 403 here names the KB role, not you).
 
         ``min_evidence`` maps to a Bedrock retrieval filter on the
         ``maxEvidence`` sidecar attribute, so the filtering happens in the
@@ -113,7 +142,7 @@ class KnowledgeBaseClient:
         arm, so nothing outside health.studio's corpus gains an exemption by
         accident.
         """
-        search: dict[str, Any] = {"numberOfResults": top_k}
+        search: dict[str, Any] = {"numberOfResults": max(rerank_pool, top_k) if rerank else top_k}
         if min_evidence is not None:
             search["filter"] = {
                 "orAll": [
@@ -121,12 +150,27 @@ class KnowledgeBaseClient:
                     {"equals": {"key": _SAFETY_CRITICAL, "value": True}},
                 ]
             }
+        if rerank:
+            search["rerankingConfiguration"] = {
+                "type": "BEDROCK_RERANKING_MODEL",
+                "bedrockRerankingConfiguration": {
+                    "modelConfiguration": {"modelArn": self._rerank_model_arn()},
+                    "numberOfRerankedResults": top_k,
+                },
+            }
         response = self._client.retrieve(
             knowledgeBaseId=self.knowledge_base_id,
             retrievalQuery={"text": query},
             retrievalConfiguration={"vectorSearchConfiguration": search},
         )
         return [_passage_of(result) for result in response.get("retrievalResults", [])]
+
+    def _rerank_model_arn(self) -> str:
+        # Foundation-model ARNs are region-scoped; take the region from the
+        # runtime client so the rerank call can never cross regions from the
+        # retrieve it belongs to. Test fakes carry no `meta`, hence the guard.
+        region = getattr(getattr(self._client, "meta", None), "region_name", None) or "us-east-1"
+        return f"arn:aws:bedrock:{region}::foundation-model/{RERANK_MODEL_ID}"
 
 
 def _passage_of(result: dict[str, Any]) -> RetrievedPassage:

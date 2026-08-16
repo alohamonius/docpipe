@@ -2,7 +2,12 @@ from typing import Any
 
 from docpipe_core.llm import HEALTH_ASSISTANT_SYSTEM, ChatClient
 from docpipe_core.models import ChatMessage
-from docpipe_core.retrieval import KnowledgeBaseClient, RetrievedPassage
+from docpipe_core.retrieval import (
+    DEFAULT_RERANK_POOL,
+    RERANK_MODEL_ID,
+    KnowledgeBaseClient,
+    RetrievedPassage,
+)
 from helpers import FakeBedrock, converse_response
 
 
@@ -181,3 +186,53 @@ def test_safety_critical_true_does_not_read_as_evidence_one() -> None:
     passage = KnowledgeBaseClient("kb-123", agent_runtime_client=fake).retrieve("q")[0]
 
     assert passage.max_evidence is None
+
+
+# ── Reranking ──────────────────────────────────────────────────────────────
+
+
+def test_rerank_widens_the_pool_and_cuts_back_to_top_k() -> None:
+    fake = FakeAgentRuntime([])
+    KnowledgeBaseClient("kb-123", agent_runtime_client=fake).retrieve(
+        "deep buttock pain", top_k=5, rerank=True
+    )
+
+    search = fake.calls[0]["retrievalConfiguration"]["vectorSearchConfiguration"]
+    assert search["numberOfResults"] == DEFAULT_RERANK_POOL
+    rerank = search["rerankingConfiguration"]
+    assert rerank["type"] == "BEDROCK_RERANKING_MODEL"
+    inner = rerank["bedrockRerankingConfiguration"]
+    assert inner["numberOfRerankedResults"] == 5
+    assert inner["modelConfiguration"]["modelArn"].endswith(RERANK_MODEL_ID)
+
+
+def test_rerank_off_sends_the_pre_rerank_request_shape() -> None:
+    """The default path must stay byte-identical to before reranking existed —
+    it is the shape the committed 2026-08-16 baseline was measured on."""
+    fake = FakeAgentRuntime([])
+    KnowledgeBaseClient("kb-123", agent_runtime_client=fake).retrieve("q", top_k=4)
+
+    search = fake.calls[0]["retrievalConfiguration"]["vectorSearchConfiguration"]
+    assert search == {"numberOfResults": 4}
+
+
+def test_rerank_pool_never_narrows_below_top_k() -> None:
+    """A pool below k would make the rerank step DROP results the caller asked for."""
+    fake = FakeAgentRuntime([])
+    KnowledgeBaseClient("kb-123", agent_runtime_client=fake).retrieve(
+        "q", top_k=10, rerank=True, rerank_pool=3
+    )
+
+    search = fake.calls[0]["retrievalConfiguration"]["vectorSearchConfiguration"]
+    assert search["numberOfResults"] == 10
+
+
+def test_rerank_composes_with_the_evidence_floor() -> None:
+    fake = FakeAgentRuntime([])
+    KnowledgeBaseClient("kb-123", agent_runtime_client=fake).retrieve(
+        "q", top_k=5, min_evidence=1, rerank=True
+    )
+
+    search = fake.calls[0]["retrievalConfiguration"]["vectorSearchConfiguration"]
+    assert "filter" in search
+    assert "rerankingConfiguration" in search

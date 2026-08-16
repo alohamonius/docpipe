@@ -146,6 +146,23 @@ class KnowledgeBase(pulumi.ComponentResource):
                             "Action": "s3vectors:*",
                             "Resource": [store.vector_bucket_arn, store.index_arn],
                         },
+                        # Retrieve-with-rerank runs the rerank step under THIS
+                        # role, not the caller's — the 403 without these names
+                        # an assumed-role session of <prefix>-kb-role (measured
+                        # 2026-08-16). bedrock:Rerank takes no resource ARN;
+                        # the model grant below is what scopes it.
+                        {
+                            "Sid": "RerankRetrievedResults",
+                            "Effect": "Allow",
+                            "Action": "bedrock:Rerank",
+                            "Resource": "*",
+                        },
+                        {
+                            "Sid": "InvokeRerankModel",
+                            "Effect": "Allow",
+                            "Action": "bedrock:InvokeModel",
+                            "Resource": f"arn:aws:bedrock:{region}::foundation-model/cohere.rerank-v3-5:0",
+                        },
                     ],
                 }
             ),
