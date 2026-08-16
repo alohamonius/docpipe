@@ -1,4 +1,4 @@
-.PHONY: sync fmt lint typecheck test status kb-eval infra-preview infra-up infra-down aurora-bootstrap
+.PHONY: sync fmt lint typecheck test status kb-eval kb-live-check infra-preview infra-up infra-down aurora-bootstrap
 
 sync:
 	uv sync --all-packages
@@ -35,6 +35,24 @@ DRY ?=
 kb-eval:
 	uv run --with boto3 python scripts/kb_eval.py \
 		--questions $(QUESTIONS) --kb-id $(KB_ID) --out $(OUT) $(DRY)
+
+# Assert the DEPLOYED data source against the chunking contract — the half
+# `test_kb_chunking_contract.py` cannot reach, because it reads Pulumi source
+# and a console edit does not touch source. Read-only: one `get_data_source`
+# call, no writes, no spend. Ids resolve from the stack, so this works right
+# after `make infra-up`; override either variable to point at another stack.
+#
+# NOT in `make test`, on purpose: `conftest.py` poisons AWS credentials for the
+# whole unit suite so nothing can reach a real account by accident. The guard
+# against that becoming a loophole is `test_the_live_check_is_reachable`, which
+# DOES run in `make test` and fails if this target or its variables disappear.
+AWS_PROFILE ?= docpipe
+LIVE_KB_ID ?= $(shell PULUMI_CONFIG_PASSPHRASE= pulumi -C pulumi stack output knowledge_base_id 2>/dev/null)
+LIVE_DS_ID ?= $(shell PULUMI_CONFIG_PASSPHRASE= pulumi -C pulumi stack output kb_data_source_id 2>/dev/null)
+kb-live-check:
+	DOCPIPE_LIVE_STACK=1 AWS_PROFILE=$(AWS_PROFILE) \
+	KNOWLEDGE_BASE_ID=$(LIVE_KB_ID) KB_DATA_SOURCE_ID=$(LIVE_DS_ID) \
+		uv run --with boto3 pytest packages/core/tests/test_kb_data_source_live.py -v
 
 # Infra targets operate on the dev stack (see pulumi/README.md for backend login).
 #

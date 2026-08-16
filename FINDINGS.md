@@ -1083,3 +1083,50 @@ The two absent-at-25 misses fail differently and a reranker cannot touch them:
 So the roadmap's two levers now have a clean division of labour: reranker for
 the 7 near-misses, corpus work (bibliography move on Aurora, phrasing fixes)
 for the 2 deep ones. Probe artifacts: `.scratch/kb-miss-rank-probe.{py,json}`.
+
+## 2026-08-17 — the live stack is now asserted, and it was already 41 keys stale
+
+Two things came out of `05-chunk-shape`'s first live round-trip attempt, and the
+second one was not what anybody was looking for.
+
+**1 · `get_data_source` closes the four-day gap, and it is not vacuous.**
+`test_kb_chunking_contract.py` reads Pulumi source with an AST; it was green for
+the entire four days the deployed data source said `FIXED_SIZE`. The new
+`packages/core/tests/test_kb_data_source_live.py` reads the *account*. Against
+`JDNNGSU1JT` / `U0PM4HIXGE` (us-east-1, dev) the whole deployed block is:
+
+```
+"vectorIngestionConfiguration": {"chunkingConfiguration": {"chunkingStrategy": "NONE"}}
+```
+
+— one key, no `fixedSizeChunkingConfiguration`. Proved non-vacuous by inverting
+both assertions: they fail printing the real value (`assert 'NONE' == 'FIXED_SIZE'`,
+`assert 'fixedSizeChunkingConfiguration' in {'chunkingStrategy': 'NONE'}`), so
+the pass is a reading of the cloud and not an empty parametrize.
+
+It is opt-in (`DOCPIPE_LIVE_STACK=1`, `make kb-live-check`) because
+`conftest.py` poisons AWS credentials for the whole unit suite on purpose. An
+opt-in test nobody opts into is a proof nobody runs, so the skip names its own
+invocation (`pytest -rs` prints it, 4 of 4) and `test_the_live_check_is_reachable`
+runs in the default `make test` and fails if the target or its variables vanish.
+Suite: 93 → 94 passed + 4 named skips; 5/5 with the switch on.
+
+**2 · The bucket was 41 sidecars stale, and nothing in either repo could tell.**
+Diffing `build/kb` against `s3://docpipe-dev-kb-source-733866507398/corpus/`
+before any write: 766 remote keys, 992 local, **41 keys changed** — every one a
+prose `*.md.metadata.json`, every one a `citationCount` that reads `0` remotely
+and `1` locally. That is health.studio `#18` (`a634a36`, 06-structure-provenance)
+landing on main and never being synced. The `.md` bodies are byte-identical; only
+the sidecars drifted.
+
+The consequence is a measurement one, and it matters for anything that quotes
+03's baseline: **recall@5 0.7879 was measured against an index whose metadata is
+not health.studio main's.** `citationCount` is `includeForEmbedding: false`, so
+the vectors are unaffected and the retrieval numbers stand — but any filter or
+rerank that reads it was reading a stale value, and the next sync moves 41 keys
+for a reason that has nothing to do with the chunk split it will be blamed on.
+
+The detector already existed and nobody was running it: `plan_prune` /
+`sync.py --dry-run` prints exactly this diff and mutates nothing. Cheap standing
+habit — dry-run the sync after any health.studio KB merge, not only before an
+ingest.
