@@ -739,3 +739,49 @@ rather than edited in, because two of them correct claims I made in this file.
 
 The procedure these feed into is `docs/INGEST-RUNBOOK.md`, not this file — this
 is where the evidence lives, that is where the sequence lives.
+
+### 2026-08-16, pre-flight — `sync.py` has no AWS profile, and the default one is wrong
+
+Found while answering "are we ready to ingest", by running the runbook's step-3
+dry run verbatim before touching anything. It failed:
+
+```
+$ uv run python services/kb_sync/sync.py --source ../health.studio/build/kb --dry-run
+  383 chunks (192 prose from 20 docs, 191 graph)      # ← corpus summary prints fine
+botocore.exceptions.ClientError: An error occurred (403) when calling the HeadObject operation: Forbidden
+```
+
+`CorpusSyncer` constructs `boto3.client("s3")` and `boto3.client("bedrock-agent")`
+with no profile and no region (`packages/core/src/docpipe_core/kb_sync.py:161-162`),
+so it takes whatever the default credential chain gives it. On this machine that
+is `[default]` in `~/.aws/credentials` — an **invalid** key
+(`aws sts get-caller-identity` → `InvalidClientTokenId`) pointed at `eu-west-1`.
+Wrong twice: wrong identity, wrong region.
+
+`AWS_PROFILE=docpipe` alone is sufficient — that profile carries
+`region = us-east-1`, so `AWS_REGION` is redundant. With it:
+
+```
+would upload: 766   unchanged (skipped): 0
+```
+
+which also confirms `health.studio/build/kb` is current at `cc146e2` and the 383
+sidecars ride along.
+
+**Why it was never noticed.** Every other AWS entry point already had a profile
+and so could not surface this: Pulumi reads `aws:profile: docpipe` from
+`Pulumi.dev.yaml`, `scripts/kb_eval.py:36` and `scripts/status.py:24` both
+hardcode `PROFILE = "docpipe"`. `sync.py` is the only one that inherits, and it
+had never run against a live bucket — there was nothing ingested to run it
+against. A credential path with no test and no first use is not a working
+credential path; it is an untested one.
+
+**Misleading in the specific way that costs time:** the 403 lands *after* the
+corpus summary has printed, so it reads as a corpus or permissions-on-the-bucket
+problem rather than "you are not who you think you are".
+
+**Fix applied:** `docs/INGEST-RUNBOOK.md` now prefixes steps 3 and 4 and carries
+the symptom in its failure table. The durable fix — a `--profile` flag on
+`CorpusSyncer` mirroring `kb_eval.py` — is deliberately deferred: it is an
+unmeasured code change on the ingest path, and the baseline is the thing that
+makes later changes falsifiable. Do it after.

@@ -14,7 +14,8 @@ corpus (post-06), not quoted from the pre-06 review.
 
 | | |
 |---|---|
-| Corpus | ✅ final — `health.studio` `main@cc146e2`, rebuilt, 383 chunks + 383 sidecars |
+| Corpus | ✅ final — `health.studio` `main@cc146e2`, rebuilt, 383 chunks + 383 sidecars; `build/kb` verified current 2026-08-16, step 2 is a no-op |
+| Dry run | ✅ rehearsed — `766 / 0`, with `AWS_PROFILE=docpipe` (see below) |
 | Answer key | ✅ ratified — 66/66, `2026-08-16` by `obichuk` |
 | Chunking `NONE` | ⏳ committed, **not applied** |
 | Index non-filterable keys | ⏳ committed, **not applied** |
@@ -39,6 +40,24 @@ Re-audit any time: `python3 .scratch/kb_audit.py ../health.studio/build/kb`
 (gitignored; promote to `scripts/` if it should run in the gate).
 
 ---
+
+## Before you start — `AWS_PROFILE=docpipe` on steps 3 and 4
+
+`CorpusSyncer` builds `boto3.client("s3")` with **no profile and no region**
+(`packages/core/src/docpipe_core/kb_sync.py:161`), so `sync.py` inherits the
+default credential chain. Measured 2026-08-16: the local `[default]` profile has
+an invalid key (`InvalidClientTokenId`) and region `eu-west-1`, and step 3 run
+verbatim dies with `ClientError: (403) … HeadObject: Forbidden` — *after* it has
+printed the corpus summary, which makes it read like a corpus problem. It is not.
+
+Steps 1 and 5 are unaffected and need nothing: Pulumi reads `aws:profile:
+docpipe` from `Pulumi.dev.yaml`, and `kb_eval.py` hardcodes `PROFILE =
+"docpipe"`. Only the two `sync.py` steps inherit, so only they need the prefix
+(the profile carries `region = us-east-1`; `AWS_REGION` is not needed).
+
+The durable fix is to give `CorpusSyncer` a `--profile` like `kb_eval.py` has —
+deliberately **not** done before the baseline, because it is an unmeasured code
+change on the ingest path.
 
 ## The sequence
 
@@ -85,7 +104,7 @@ A non-zero unbacked count means the build is not from `main@cc146e2` or later.
 ### 3 · Dry run — no writes, no spend
 
 ```bash
-uv run python services/kb_sync/sync.py --source ../health.studio/build/kb --dry-run
+AWS_PROFILE=docpipe uv run python services/kb_sync/sync.py --source ../health.studio/build/kb --dry-run
 ```
 
 Expect `would upload: 766   unchanged (skipped): 0` — 383 documents + 383
@@ -96,7 +115,7 @@ no named citations.
 ### 4 · Ingest
 
 ```bash
-uv run python services/kb_sync/sync.py --source ../health.studio/build/kb
+AWS_PROFILE=docpipe uv run python services/kb_sync/sync.py --source ../health.studio/build/kb
 ```
 
 Ids resolve from `pulumi stack output` automatically, which is why this works
@@ -108,6 +127,7 @@ failed 0`. Anything else, read this table before changing anything:
 
 | symptom | almost certainly | fix |
 |---|---|---|
+| `ClientError (403) … HeadObject` before any count | `AWS_PROFILE=docpipe` is missing — see *Before you start* | re-run with the prefix; nothing was written |
 | `failed: 383` | `STRING_LIST` is rejected on S3 Vectors — see *Open risk* | flatten `verification` to a comma-joined `STRING` in `stamp.ts`; nothing downstream filters on it |
 | `failed: ~241` | the non-filterable keys did not take | `aws s3vectors get-index` (via boto3) and check `metadataConfiguration`; if absent, `_KEYS` did not fire |
 | `failed: 0`, chunks look fragmented on retrieval | chunking is not `NONE` | `get_data_source` and check `chunkingStrategy` |
