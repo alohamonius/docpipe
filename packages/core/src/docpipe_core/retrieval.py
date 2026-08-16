@@ -80,15 +80,46 @@ class KnowledgeBaseClient:
     ) -> list[RetrievedPassage]:
         """Retrieve passages, optionally refusing anything below an evidence floor.
 
-        ``min_evidence`` maps to a Bedrock ``greaterThanOrEquals`` retrieval
-        filter on the ``maxEvidence`` sidecar attribute, so the filtering
-        happens in the vector store — an excluded chunk never reaches the model
-        and never consumes context. ``None`` (the default) filters nothing.
+        ``min_evidence`` maps to a Bedrock retrieval filter on the
+        ``maxEvidence`` sidecar attribute, so the filtering happens in the
+        vector store — an excluded chunk never reaches the model and never
+        consumes context. ``None`` (the default) filters nothing.
+
+        **The floor is OR'd with the safety pin, and that is not a nicety.**
+        This was a flat ``greaterThanOrEquals``, which is wrong in a way that
+        surfaces only the first time someone raises the floor to improve
+        quality. Measured against health.studio's corpus and its 66-question
+        answer key (that repo's ``docs/FINDINGS.md``, 2026-08-16):
+
+        - ``15-medical-red-flags--02-screening-summary-table-machine-readable``
+          is ``maxEvidence: 0`` **and** ``safetyCritical: true``. It is the
+          machine-readable red-flag screen, and it carries the cardiac row —
+          "chest, left arm, or jaw during exertion → EMERGENCY". A flat floor
+          of 1 deletes it.
+        - 11 of the 66 questions become unanswerable, 7 of them expecting the
+          closed-world index chunk. The honesty apparatus is unrated *by
+          construction*: "a connection absent from this list is one the system
+          does not know" is a claim about the system, so there is no study to
+          cite and no star to earn.
+
+        So a flat floor removes the corpus's ability to abstain and its
+        red-flag screen while keeping every confident claim — the exact
+        inversion of what raising it is meant to achieve. The fix belongs in
+        the filter rather than in the grades: re-grading the red flags to clear
+        a floor would contradict the safety override, which is right to be
+        ungraded.
+
+        A chunk with no ``safetyCritical`` attribute does not match the second
+        arm, so nothing outside health.studio's corpus gains an exemption by
+        accident.
         """
         search: dict[str, Any] = {"numberOfResults": top_k}
         if min_evidence is not None:
             search["filter"] = {
-                "greaterThanOrEquals": {"key": _MAX_EVIDENCE, "value": min_evidence}
+                "orAll": [
+                    {"greaterThanOrEquals": {"key": _MAX_EVIDENCE, "value": min_evidence}},
+                    {"equals": {"key": _SAFETY_CRITICAL, "value": True}},
+                ]
             }
         response = self._client.retrieve(
             knowledgeBaseId=self.knowledge_base_id,

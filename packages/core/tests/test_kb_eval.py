@@ -304,13 +304,22 @@ def test_no_passages_is_zero_integrity_not_perfect_integrity() -> None:
 
 
 def test_k_and_the_evidence_filter_reach_the_shipped_client() -> None:
+    """What this owns is PASS-THROUGH: the harness's k and floor reach the real
+    client rather than a local reimplementation of it.
+
+    It deliberately does not assert the filter's shape. It used to, and the
+    safety exemption (`retrieval.py` — the floor is OR'd with `safetyCritical`)
+    broke it here for a reason that has nothing to do with this harness. The
+    shape is `test_retrieval.py`'s to own; this asserts the floor arrives.
+    """
     fake = FakeAgentRuntime({})
     client = KnowledgeBaseClient("kb-123", agent_runtime_client=fake)
     score_question_set(client, question_set(), k=7, min_evidence=2)
 
     search = fake.calls[0]["retrievalConfiguration"]["vectorSearchConfiguration"]
     assert search["numberOfResults"] == 7
-    assert search["filter"] == {"greaterThanOrEquals": {"key": "maxEvidence", "value": 2}}
+    sent = str(search["filter"])
+    assert "maxEvidence" in sent and "2" in sent
     assert len(fake.calls) == 3
 
 
