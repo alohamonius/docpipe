@@ -189,9 +189,7 @@ def test_a_uri_outside_the_prefix_has_no_key() -> None:
 def test_source_path_is_not_used_as_a_fallback_key() -> None:
     # sourcePath names the authoring document, one level above the chunk.
     # Grading on it would silently score documents instead of chunks.
-    passage = RetrievedPassage(
-        text="", source=None, source_path="docs/anatomy/12-pain-science.md"
-    )
+    passage = RetrievedPassage(text="", source=None, source_path="docs/anatomy/12-pain-science.md")
     assert chunk_key_of(passage) is None
 
 

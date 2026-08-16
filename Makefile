@@ -6,8 +6,12 @@ sync:
 fmt:
 	uv run ruff format packages services scripts
 
+# Both halves, because CI runs both. `ruff check` alone went green locally while
+# CI failed on `format --check` for two consecutive runs — a gate you can pass
+# locally and fail remotely is a gate people learn to ignore.
 lint:
 	uv run ruff check packages services scripts
+	uv run ruff format --check packages services scripts
 
 typecheck:
 	uv run mypy packages/core/src
