@@ -564,3 +564,178 @@ unfalsifiable.
 inverts. `pulumi up` → first ingest → golden set scored on the **current**
 corpus as the control → *then* the bibliography move, with a signed delta
 against that control. The corpus reshape is no longer step 1.
+
+## 2026-08-16 — Pre-ingest review: the corpus is clean, the destination is not
+
+Review of the data staged for the first ingest (`health.studio/build/kb`, 383
+chunks). Every number here was measured today against the built corpus and the
+**live** dev stack; nothing is quoted from an earlier report.
+
+**The corpus itself is ready.** Measured over all 383 documents + 383 sidecars:
+
+| check | result |
+|---|---|
+| sidecar JSON schema (`metadataAttributes`, typed values) | 0 errors, 383/383 |
+| attribute keys | **10**, uniform on every chunk, one type each — *not 9, as `docs/kb-data-status.md` and this file's 2026-08-14 entry both say* |
+| orphan sidecars / docs missing a sidecar | 0 / 0 |
+| S3 key hygiene (charset, case collisions, length) | clean; longest key 123 B |
+| largest chunk vs Titan v2's 8,192-token ceiling | 6,158 tok (`referral-source--pancreas`), 75% of ceiling; 0 over, 1 over 6k |
+| whole corpus | 418,604 tokens (cl100k proxy) — confirms the "~420k, ≈1¢ to re-embed" figure |
+| custom metadata payload per vector | median 326 B, **max 413 B** |
+| non-`.md` files that would be swept into the bucket | 1 (`MANIFEST.json`) — excluded, `discover_corpus` globs `*.md` only |
+
+Command: `python3 .scratch/kb_audit.py ../health.studio/build/kb` (gitignored —
+promote it to `scripts/` if this should run in the gate rather than by hand).
+
+**The 2 KB filterable cap was compared against the wrong object.** This file
+(2026-08-14, "Sizing checks") measures the *sidecar* against the 2 KB filterable
+metadata limit and finds it fits at ≤1,705 B. The sidecar is not what the cap
+bites. Bedrock stores the **chunk body itself** in the vector as
+`AMAZON_BEDROCK_TEXT`, and with no `metadataConfiguration` on the index that key
+is filterable like any other. Verified live today:
+
+```
+$ aws s3vectors get-index --vector-bucket-name docpipe-dev-vectors \
+      --index-name docpipe-dev-kb          # via boto3 1.43.62; the CLI on PATH predates s3vectors
+{"dataType":"float32","dimension":1024,"distanceMetric":"cosine",
+ "encryptionConfiguration":{"sseType":"AES256"}}   ← no metadataConfiguration
+```
+
+`243 of 383 chunks are larger than 2,048 bytes` (p50 2,504 B, p90 11,348 B, max
+24,747 B). So **BLOCKER B is a step-2 blocker, not a step-4 one**: it does not
+wait for the bibliography move, it lands on the very first ingest of the corpus
+as it stands — the ingest PLAN.md's corrected order makes step 2. *Predicted, not
+yet measured in this account:* the practitioner report matching this config is a
+`ValidationException` at ingestion time
+(<https://dev.to/aws-heroes/data-ingestion-rss-feeds-knowledge-base-s3-vectors-and-metadata-filtering-4n8m>,
+who fixed it by declaring **both** `AMAZON_BEDROCK_TEXT` *and*
+`AMAZON_BEDROCK_METADATA` non-filterable). One ~1¢ ingest of a single >2 KB file
+settles it; do that before trusting either direction.
+
+**The two blockers mask each other, so fixing one alone is worse than fixing
+neither.** The live data source still reports the wrong chunker —
+`get_data_source(KPAQK6MQY4)` → `FIXED_SIZE, maxTokens 500, overlap 20%`, 0
+ingestion jobs, confirming `dbc3e8d` is still unapplied. FIXED_SIZE at 500 tokens
+produces fragments mostly under 2 KB, which is why the filterable cap has never
+been hit. Apply `NONE` on its own and every chunk arrives whole: the safety
+defect (evidence legend stripped from every fragment after the first) is traded
+for a hard ingestion failure across ~63% of the corpus. **Both fixes must land in
+the same `pulumi up`.**
+
+**Non-filterable will not rescue the bibliography move either — the Bedrock
+integration caps *custom* metadata at 1 KB.** The 2026-08-14 entry concludes
+BLOCKER B is "a Pulumi index change (expect a replace)", which implies that
+declaring `sources` non-filterable lets ~12 KB of bibliography fit under the
+40 KB total. It does not. Verbatim, from the S3 user guide's Bedrock integration
+page: *"When using S3 Vectors as your vector store with Amazon Bedrock Knowledge
+Bases, you can attach up to 1KB of custom metadata and 35 metadata keys per
+vector."*
+(<https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-vectors-bedrock-kb.html>,
+Limitations). Measured headroom against that 1 KB: 413 B used, ~600 B free —
+about 150 words of citations, against a largest bibliography of 1,832 words.
+**PLAN.md step 4 is not implementable on S3 Vectors in its current design**,
+independent of the index fix. It survives on the Aurora/pgvector KB, which makes
+the bibliography move a *reason to build the second KB* rather than something to
+do first — or it needs a different carrier (a docId-keyed lookup resolved at
+citation time, outside the vector).
+
+**Index metadata config is immutable — confirmed, closing the 2026-08-14
+"*not yet verified*".** The S3 Vectors API (botocore 1.43.62) exposes
+`CreateIndex`, `DeleteIndex`, `GetIndex`, `ListIndexes` — and **no `UpdateIndex`**;
+`metadataConfiguration.nonFilterableMetadataKeys` is a `CreateIndex`-only input.
+Fixing B is therefore delete-and-recreate. Free today (0 vectors, 0 jobs), a full
+re-ingest later.
+
+```
+$ uv run --with boto3 python -c "import boto3; print(sorted(boto3.client('s3vectors',
+    region_name='us-east-1').meta.service_model.operation_names))"
+['CreateIndex','CreateVectorBucket','DeleteIndex','DeleteVectorBucket',…,'PutVectors','QueryVectors',…]
+```
+
+**Trap in the way of that fix:** `pulumi/components/s3vectors.py:19` lists the
+replace-triggering inputs in `_KEYS`, and the provider defines no `update()`.
+Adding `non_filterable_metadata_keys` to the resource's props **without** adding
+it to `_KEYS` makes `diff()` return `changes=False` — Pulumi reports "unchanged"
+and the index keeps its old (empty) config. The fix must touch both.
+
+**Near-duplicate detection, run for the first time** — this was open question 6
+in `docs/kb-data-status.md` ("cannot be asked through the retrieval API"). It can
+be asked of the corpus offline, and the answer is *the corpus is not diluted by
+duplication*. Normalised bodies (generated header stripped, URL targets removed),
+5-gram shingle Jaccard over all 73,153 pairs:
+
+```
+exact duplicate bodies        0
+pairs ≥ 0.9 / 0.8 / 0.7 / 0.6 0 / 0 / 0 / 0
+pairs ≥ 0.5                   44, involving 19 chunks
+```
+
+Every one of the 44 is a `body-graph-structure--*` pair (fibula↔tibia 0.58,
+navicular↔talus 0.56, the eight carpals ~0.55). That is the same 31-chunk cohort
+already indicted as item 5 — a rendered ★ with no source behind it. So three
+independent measurements now converge on the same cohort: template-shaped, no
+citations, `verification: ["NONE"]`, and (below) the worst signal-to-boilerplate
+ratio in the corpus. They are the corpus's weakest asset, not a random tail.
+
+**Boilerplate is 27.5% of the median chunk, and the majority of 51 of them.**
+Every chunk carries the same generated header — provenance comment, title,
+`Source`, the four-level evidence scale, the "not a diagnosis" line. Measured to
+the first `---`: median **27.5%** of the chunk's bytes, >33% for **151** chunks,
+>50% for **51**. Worst: `body-graph-structure--tibia` at 69% (646 B of 938 B),
+`06-breathing-and-cervical-connection--01-overview` at 71%. With `NONE`, that
+text is inside every vector, so ~28% of the average embedding budget is spent on
+a string identical across all 383 chunks. This is *not* an argument to remove it
+— it is there for the safety reason `NONE` exists — but it is unmeasured cost
+that belongs next to the bibliography's ~20% in any embedding-payload work, and
+it hits the short chunks hardest, which are exactly the ones with the least
+signal to spare.
+
+**17 citation collisions.** `RetrievedPassage.citation`
+(`retrieval.py:54-66`) renders `docTitle → section (★★)`. 41 chunks share a
+`(docId, section)` pair with at least one other chunk, in 17 groups — 4 chunks all
+cite as *"Myofascial Chains → The 12 Myofascial Meridians"*, 4 more as
+*"Muscle Anatomy Database → Upper Body"*, 4 as *"… → Lower Body"*. Two different
+passages in one answer can therefore carry the identical citation string, and a
+reader cannot tell which was used. Producer-side fix (a disambiguating suffix in
+`section`), no infra involved.
+
+**Unresolved — `STRING_LIST` on S3 Vectors.** All 383 sidecars carry
+`verification` as `STRING_LIST`. Sources conflict on whether the Bedrock KB +
+S3 Vectors path accepts it: the practitioner article above lists STRING_LIST
+among the four supported KB types, while an AWS re:Post thread reports it working
+on pgvector and **not** on S3 Vectors (403 to automated fetch; read it by hand
+before relying on either). Cheap insurance: `verification` is the one attribute
+no filter reads — `retrieval.py` only ever filters on `maxEvidence` and
+`safetyCritical` — so if ingestion rejects it, flattening it to a comma-joined
+`STRING` costs nothing downstream. Worth knowing before the first ingest, since
+the failure would hit all 383 documents, not a subset.
+
+### Addendum, same day — three corrections to the entry above
+
+Written after the fixes landed in code and `pulumi preview` ran. Left in place
+rather than edited in, because two of them correct claims I made in this file.
+
+1. **The Knowledge Base is replaced too, not just the data source.** The entry
+   above says fixing BLOCKER B is a delete-and-recreate of the *index*. It is
+   also a replace of `aws:bedrock/agentKnowledgeBase`: the KB references the
+   index by ARN, and Pulumi cannot know at plan time that the new ARN is
+   identical (it is — bucket and index names are deterministic), so it plans a
+   replace. **`knowledgeBaseId` changes**; `SJQAFQXPH7` is dead after the apply.
+   `kb-policy` shows its whole statement block as a diff for the same reason —
+   it is an `Output.json_dumps` over the replaced ARN and re-renders identically.
+   Nothing is lost: 0 vectors, 0 ingestion jobs. Re-read the id from
+   `pulumi stack output`, never from `.env` or `status.json`.
+2. **241 of 383 chunks exceed 2 KB, not 243.** The 243 was measured on the
+   pre-06 corpus. `06-structure-provenance` merged as `health.studio@cc146e2`,
+   which changed 162 chunk bodies and 75 `maxEvidence` values (every one a
+   downgrade). Post-merge: 1,679,754 B, p50 2,470, p90 11,314, max 24,747;
+   418,397 tokens; evidence histogram ★★★ 84 · ★★☆ 86 · ★☆☆ 69 · unrated 144.
+   The conclusion is unchanged — 63% of the corpus still cannot be ingested with
+   everything filterable — but the number in an argument should be the number.
+3. **`_KEYS` fired, and the preview proves it.** The trap named above was real
+   and is now closed: `pulumi preview` reports the index as `(replace)` with
+   `+ non_filterable_metadata_keys` on the diff. Had the key been left out of
+   `_KEYS`, this is exactly where it would have said "unchanged" instead.
+
+The procedure these feed into is `docs/INGEST-RUNBOOK.md`, not this file — this
+is where the evidence lives, that is where the sequence lives.

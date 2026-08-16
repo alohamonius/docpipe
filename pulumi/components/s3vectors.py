@@ -16,7 +16,19 @@ from pulumi.dynamic import CreateResult, DiffResult, Resource, ResourceProvider
 
 import pulumi
 
-_KEYS = ("region", "vector_bucket_name", "index_name", "dimension", "distance_metric", "data_type")
+# Every input whose change must force a replace. `non_filterable_metadata_keys`
+# belongs here and the omission would be silent: the provider has no `update()`,
+# so a key missing from this tuple makes `diff()` return `changes=False` and
+# Pulumi reports "unchanged" while the index keeps its old metadata config.
+_KEYS = (
+    "region",
+    "vector_bucket_name",
+    "index_name",
+    "dimension",
+    "distance_metric",
+    "data_type",
+    "non_filterable_metadata_keys",
+)
 
 
 class _S3VectorsProvider(ResourceProvider):
@@ -36,6 +48,15 @@ class _S3VectorsProvider(ResourceProvider):
         with contextlib.suppress(c.exceptions.ConflictException):
             c.create_vector_bucket(vectorBucketName=bucket)
         bucket_arn = c.get_vector_bucket(vectorBucketName=bucket)["vectorBucket"]["vectorBucketArn"]
+        # Non-filterable keys can ONLY be declared here. The API (botocore
+        # 1.43.62) has CreateIndex / DeleteIndex / GetIndex / ListIndexes and no
+        # UpdateIndex — verified against the service model, not assumed — so the
+        # set is immutable and getting it wrong costs a delete-and-reingest.
+        kwargs = {}
+        if props.get("non_filterable_metadata_keys"):
+            kwargs["metadataConfiguration"] = {
+                "nonFilterableMetadataKeys": list(props["non_filterable_metadata_keys"])
+            }
         c.create_index(
             vectorBucketName=bucket,
             indexName=index,
@@ -43,6 +64,7 @@ class _S3VectorsProvider(ResourceProvider):
             # props JSON-roundtrip through the engine, so ints arrive as floats
             dimension=int(props["dimension"]),
             distanceMetric=props["distance_metric"],
+            **kwargs,
         )
         index_arn = c.get_index(vectorBucketName=bucket, indexName=index)["index"]["indexArn"]
 
@@ -70,7 +92,14 @@ class _S3VectorsProvider(ResourceProvider):
 
 
 class S3VectorsIndex(Resource):
-    """One S3 Vectors bucket + index. Outputs: vector_bucket_arn, index_arn."""
+    """One S3 Vectors bucket + index. Outputs: vector_bucket_arn, index_arn.
+
+    ``non_filterable_metadata_keys`` is the one input you cannot fix later. S3
+    Vectors caps **filterable** metadata at 2 KB per vector (40 KB total), and
+    Bedrock stores the chunk body in the vector as ``AMAZON_BEDROCK_TEXT`` — so
+    an index that declares nothing non-filterable fails ingestion for every
+    chunk over ~2 KB, which on health.studio's corpus is 243 of 383.
+    """
 
     vector_bucket_arn: pulumi.Output[str]
     index_arn: pulumi.Output[str]
@@ -85,6 +114,7 @@ class S3VectorsIndex(Resource):
         dimension: int = 1024,
         distance_metric: str = "cosine",
         data_type: str = "float32",
+        non_filterable_metadata_keys: list[str] | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         super().__init__(
@@ -99,6 +129,7 @@ class S3VectorsIndex(Resource):
                 "dimension": dimension,
                 "distance_metric": distance_metric,
                 "data_type": data_type,
+                "non_filterable_metadata_keys": non_filterable_metadata_keys or [],
                 # declared outputs — populated by create()
                 "vector_bucket_arn": None,
                 "index_arn": None,

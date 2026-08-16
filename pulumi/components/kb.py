@@ -78,6 +78,15 @@ class KnowledgeBase(pulumi.ComponentResource):
 
         # S3 Vectors store (boto3-backed dynamic provider — pulumi-aws lacks it).
         # Dimension MUST match the embedding model output (Titan v2 = 1024).
+        #
+        # The two keys Bedrock writes are declared non-filterable, and that is a
+        # precondition for ingesting at all rather than a tuning choice.
+        # `AMAZON_BEDROCK_TEXT` holds the chunk body; filterable metadata is
+        # capped at 2 KB per vector, and 243 of the corpus's 383 chunks are
+        # bigger than that. Leave it filterable and the first ingest fails on
+        # ~63% of the corpus — silently masked today only because the deployed
+        # data source still splits at 500 tokens. Declared at CreateIndex or
+        # never: the API has no UpdateIndex, so changing this replaces the index.
         store = S3VectorsIndex(
             f"{prefix}-vectors",
             region=region,
@@ -86,6 +95,7 @@ class KnowledgeBase(pulumi.ComponentResource):
             dimension=embedding_dimension,
             distance_metric="cosine",
             data_type="float32",
+            non_filterable_metadata_keys=["AMAZON_BEDROCK_TEXT", "AMAZON_BEDROCK_METADATA"],
             opts=me,
         )
 

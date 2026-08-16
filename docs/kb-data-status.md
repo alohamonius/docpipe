@@ -1,5 +1,28 @@
 # Knowledge base — data status
 
+> **Partly superseded, 2026-08-16.** Read `INGEST-RUNBOOK.md` first for current
+> state and the sequence. What changed here since this was written:
+>
+> - **The blocker below was half the blocker.** `NONE` chunking is necessary and
+>   not sufficient — the S3 Vectors index also declares nothing non-filterable,
+>   so `AMAZON_BEDROCK_TEXT` (the chunk body) falls under the 2 KB filterable
+>   cap and 241 of 383 chunks fail. Applying `NONE` alone is *worse* than
+>   applying neither. Both fixes are committed, awaiting one `pulumi up`.
+> - **Item 5 is fixed** — `health.studio@cc146e2` (`06-structure-provenance`)
+>   landed. Rated-and-uncited 96 → 63, `graph-structure` 31 → 0. The histogram
+>   below is stale: it is now ★★★ 84 · ★★☆ 86 · ★☆☆ 69 · unrated 144, and there
+>   are 10 metadata attributes per chunk, not 9.
+> - **Item 6 is answered** — near-duplicate detection ran offline (it did not
+>   need vectors): 0 exact duplicates, 0 pairs above 0.6 Jaccard, 44 in 0.5–0.6,
+>   all inside the `body-graph-structure--*` family. Not diluted.
+> - **Decision 2 (bibliography alongside the chunk) is not available on S3
+>   Vectors at all** — the Bedrock integration caps custom metadata at 1 KB per
+>   vector; the largest bibliography is ~12 KB. It survives only on Aurora.
+> - **Decision 1 (evidence policy) was answered by 06 in the corpus itself**: an
+>   unrated chunk now says so inline — *"Do not restate it as an established
+>   finding; say that its provenance is unstated"* — which is option (b).
+> - **`SJQAFQXPH7` is dead** after the pending apply; the KB is replaced too.
+
 **Date:** 2026-08-14 · **Corpus:** `health.studio/build/kb/` · **Target:** Bedrock
 Knowledge Base `SJQAFQXPH7` (us-east-1)
 
