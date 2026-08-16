@@ -17,10 +17,12 @@ corpus (post-06), not quoted from the pre-06 review.
 | Corpus | ✅ final — `health.studio` `main@cc146e2`, rebuilt, 383 chunks + 383 sidecars; `build/kb` verified current 2026-08-16, step 2 is a no-op |
 | Dry run | ✅ rehearsed — `766 / 0`, with `AWS_PROFILE=docpipe` (see below) |
 | Answer key | ✅ ratified — 66/66, `2026-08-16` by `obichuk` |
-| Chunking `NONE` | ⏳ committed, **not applied** |
-| Index non-filterable keys | ⏳ committed, **not applied** |
-| Ingested | ❌ nothing — 0 objects in the source bucket, 0 ingestion jobs |
-| Baseline | ❌ not taken |
+| Chunking `NONE` | ✅ applied 2026-08-16, verified `chunkingStrategy: NONE` |
+| Index non-filterable keys | ✅ applied, verified `["AMAZON_BEDROCK_TEXT","AMAZON_BEDROCK_METADATA"]` |
+| Live ids | KB `JDNNGSU1JT`, ds `U0PM4HIXGE` (both replaced; `SJQAFQXPH7` is dead) |
+| Uploaded | ✅ 766 objects in `docpipe-dev-kb-source-733866507398` |
+| Ingested | ❌ **blocked** — job `KWZPC25FGS` `COMPLETE` but 0 vectors: all 383 sidecars exceed the 1 KB metadata cap |
+| Baseline | ❌ not taken — blocked on the above |
 
 Both pending items are in the **same** `pulumi up`. Do not apply one alone —
 see *Why both, together* below.
@@ -122,12 +124,35 @@ Ids resolve from `pulumi stack output` automatically, which is why this works
 right after step 1 with only `--source` — and why you should **not** pass ids
 from `.env`, which is stale as of step 1.
 
-**The number that matters is `failed`.** Expect `scanned 383 · indexed 383 ·
-failed 0`. Anything else, read this table before changing anything:
+**`failed` is not the number that matters — `indexed` is.** Corrected
+2026-08-16, after job `KWZPC25FGS` returned `COMPLETE` with `failed: 0`,
+`skipped: 0` and **0 vectors written**. Bedrock *ignores* an oversized-sidecar
+document: it counts in `Scanned`, in no other bucket, and appears only in
+`failureReasons` — on a job whose status is `COMPLETE`. Every summary number
+looks like success.
+
+So check two things, not one:
+
+```bash
+AWS_PROFILE=docpipe uv run --with boto3 python - <<'PY'
+import boto3, json
+s = boto3.Session(profile_name="docpipe", region_name="us-east-1")
+j = s.client("bedrock-agent").get_ingestion_job(
+    knowledgeBaseId=KB, dataSourceId=DS, ingestionJobId=JOB)["ingestionJob"]
+print(json.dumps(j["statistics"], indent=2), j.get("failureReasons"))
+v = s.client("s3vectors")
+print("vectors:", len(v.list_vectors(vectorBucketName="docpipe-dev-vectors",
+                                     indexName="docpipe-dev-kb", maxResults=500)["vectors"]))
+PY
+```
+
+Expect `numberOfNewDocumentsIndexed: 383` and a non-zero vector count. Anything
+else, read this table before changing anything:
 
 | symptom | almost certainly | fix |
 |---|---|---|
 | `ClientError (403) … HeadObject` before any count | `AWS_PROFILE=docpipe` is missing — see *Before you start* | re-run with the prefix; nothing was written |
+| `COMPLETE`, `indexed 0`, `failed 0`, `failureReasons: Ignored 383 files … 1024 bytes` | **the sidecars exceed the 1 KB metadata cap** — hit for real 2026-08-16 | shrink the sidecar in `health.studio` `build-kb.ts`; minifying alone clears only 34 of 383. See `FINDINGS.md` for the priced variants |
 | `failed: 383` | `STRING_LIST` is rejected on S3 Vectors — see *Open risk* | flatten `verification` to a comma-joined `STRING` in `stamp.ts`; nothing downstream filters on it |
 | `failed: ~241` | the non-filterable keys did not take | `aws s3vectors get-index` (via boto3) and check `metadataConfiguration`; if absent, `_KEYS` did not fire |
 | `failed: 0`, chunks look fragmented on retrieval | chunking is not `NONE` | `get_data_source` and check `chunkingStrategy` |
@@ -192,9 +217,11 @@ human ruling of 2026-08-14.
   *impossible on S3 Vectors regardless*: the Bedrock integration caps **custom
   metadata at 1 KB per vector** and 35 keys ("you can attach up to 1KB of custom
   metadata and 35 metadata keys per vector" — S3 user guide, *Using S3 Vectors
-  with Amazon Bedrock Knowledge Bases* → Limitations). Current usage is 413 B, so
-  ~600 B is free — about 150 words, against a largest bibliography of 1,832
-  words. Declaring it non-filterable does **not** buy the 40 KB ceiling. This
+  with Amazon Bedrock Knowledge Bases* → Limitations). ~~Current usage is 413 B,
+  so ~600 B is free~~ — **wrong, corrected 2026-08-16: sidecars are 1,547–1,705 B
+  and all 383 are already over the cap.** Nothing is free; this is the gate that
+  blocked the first ingest, not a future ceiling. Declaring it non-filterable
+  does **not** buy the 40 KB ceiling. This
   step survives on the Aurora/pgvector KB, which makes it a reason to build the
   second KB rather than something to do first.
 - **Splitting oversized graph chunks** — renames keys; no rename hazard exists

@@ -785,3 +785,76 @@ the symptom in its failure table. The durable fix — a `--profile` flag on
 `CorpusSyncer` mirroring `kb_eval.py` — is deliberately deferred: it is an
 unmeasured code change on the ingest path, and the baseline is the thing that
 makes later changes falsifiable. Do it after.
+
+### 2026-08-16, first ingest — `COMPLETE`, `failed: 0`, and zero vectors written
+
+The first real ingestion job (`KWZPC25FGS`, KB `JDNNGSU1JT`, ds `U0PM4HIXGE`)
+reported success and indexed nothing. This entry is the correction to two claims
+this file and `docs/INGEST-RUNBOOK.md` made confidently, and both of them are the
+reason it took a manual check to notice.
+
+```
+status: COMPLETE
+numberOfDocumentsScanned         : 383
+numberOfMetadataDocumentsScanned : 383
+numberOfNewDocumentsIndexed      : 0
+numberOfDocumentsFailed          : 0
+numberOfDocumentsSkipped         : 0
+failureReasons: ["Ignored 383 files as the associated metadata was larger
+                  than service limit of MaximumFileSizeSupported: 1024 bytes"]
+
+s3vectors list_vectors(docpipe-dev-vectors/docpipe-dev-kb) → 0 vectors
+```
+
+**Correction 1 — "the number that matters is `failed`" was wrong.** It was `0`,
+and so were `Skipped` and `Failed`, and the job status was `COMPLETE`. Bedrock
+*ignores* a document whose sidecar is oversized: it is counted in `Scanned`,
+counted in no other bucket, and reported only in `failureReasons` — a field on a
+job whose status is `COMPLETE`. Every summary number is consistent with success.
+The only honest checks are `numberOfNewDocumentsIndexed` and an actual
+`list_vectors` count, and the runbook now says so.
+
+Had this not been checked, the next step was the baseline eval, which would have
+scored 0 recall against an empty index and looked like a corpus failure.
+
+**Correction 2 — "current usage is 413 B, so ~600 B is free" was wrong by 4×.**
+Measured over all 383 sidecars: **1,547–1,705 B each, p50 1,609, and 383/383
+exceed 1,024**. The 1 KB Bedrock custom-metadata cap was already documented in
+the runbook — as an argument about why the *bibliography* plan is dead on S3
+Vectors — while the corpus was, at that moment, already over it. The cap was
+read as a ceiling to plan against instead of a gate already closed.
+
+**Where the bytes go.** The attribute *values* total **86 B**. The other ~94% is
+the typed-envelope format: each of 10 attributes carries
+`{"value":{"type":…,"…Value":…},"includeForEmbedding":…}`, ~150 B of scaffolding
+apiece, and `apps/web/scripts/build-kb.ts:121` writes it with
+`JSON.stringify(…, null, 2)`.
+
+**Priced fixes** (all 383, measured, `over-1KB` counts):
+
+| variant | p50 | max | over 1 KB |
+|---|---|---|---|
+| as built (pretty-printed) | 1,609 | 1,705 | 383/383 |
+| minify only | 1,042 | 1,134 | 349/383 |
+| minify + omit `includeForEmbedding:false` | 818 | 910 | **0/383** |
+| minify + flat untyped form | 333 | 425 | **0/383** |
+| minify + typed, 5 keys | 540 | 616 | **0/383** |
+
+Minifying alone is **not** enough — that is the trap, because it is the obvious
+one-character fix and it clears only 34 of 383.
+
+**Open, and blocking the choice:** whether `includeForEmbedding` defaults to
+`false` when omitted. If it defaults to `true`, omitting it starts embedding
+`docId`, `sourcePath` and `citationCount`, which changes retrieval quality —
+under a baseline whose whole purpose is to make later changes falsifiable. Not
+assumed either way here. The flat untyped form has the most headroom (600 B) but
+drops `includeForEmbedding` entirely, which is the same unmeasured change made
+unconditionally.
+
+**Not settled by this job:** `STRING_LIST` on S3 Vectors. Nothing was embedded,
+so the open risk recorded above is still open — the sidecars never got far
+enough to be type-checked.
+
+The fix site is `health.studio`'s `apps/web/scripts/build-kb.ts` +
+`src/lib/kb/stamp.ts`; the behaviour is docpipe's ingestion path, so the finding
+lives here and is referenced from there.
