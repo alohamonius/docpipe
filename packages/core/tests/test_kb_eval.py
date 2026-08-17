@@ -327,6 +327,25 @@ def test_the_report_carries_its_own_n_and_k() -> None:
     assert report.question_set["ratified"] == "2026-08-20"
 
 
+def test_rerank_reaches_the_client_and_the_report_records_it() -> None:
+    """Same pass-through contract as k and the floor — and the report must say
+    which experiment it was, or a reranked score gets compared to the raw
+    baseline as if they measured the same thing."""
+    fake = FakeAgentRuntime({})
+    client = KnowledgeBaseClient("kb-123", agent_runtime_client=fake)
+    report = score_question_set(client, question_set(), rerank=True, rerank_pool=20)
+
+    search = fake.calls[0]["retrievalConfiguration"]["vectorSearchConfiguration"]
+    assert search["numberOfResults"] == 20
+    assert "rerankingConfiguration" in search
+    assert (report.rerank, report.rerank_pool) == (True, 20)
+
+
+def test_a_raw_report_says_so() -> None:
+    report = scored({})
+    assert (report.rerank, report.rerank_pool) == (False, None)
+
+
 # ── The human gate, enforced ───────────────────────────────────────────────
 
 

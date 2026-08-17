@@ -32,9 +32,10 @@ QUESTIONS ?= ../health.studio/apps/web/src/lib/kb/eval/questions.json
 KB_ID ?=
 OUT ?= .scratch/kb-eval.json
 DRY ?=
+RERANK ?=
 kb-eval:
 	uv run --with boto3 python scripts/kb_eval.py \
-		--questions $(QUESTIONS) --kb-id $(KB_ID) --out $(OUT) $(DRY)
+		--questions $(QUESTIONS) --kb-id $(KB_ID) --out $(OUT) $(DRY) $(RERANK)
 
 # Assert the DEPLOYED data source against the chunking contract — the half
 # `test_kb_chunking_contract.py` cannot reach, because it reads Pulumi source

@@ -31,7 +31,7 @@ from docpipe_core.kb_eval import (
     load_question_set,
     score_question_set,
 )
-from docpipe_core.retrieval import KnowledgeBaseClient
+from docpipe_core.retrieval import DEFAULT_RERANK_POOL, KnowledgeBaseClient
 
 PROFILE = "docpipe"
 REGION = "us-east-1"
@@ -54,6 +54,20 @@ def main() -> int:
         action="store_true",
         help="score an unratified answer key — a rehearsal, never a baseline",
     )
+    parser.add_argument(
+        "--rerank",
+        action="store_true",
+        help="widen retrieval to a candidate pool and rerank with cohere.rerank-v3-5 "
+        "before cutting to k; the report records this so the number cannot be "
+        "mistaken for a raw-retrieval score",
+    )
+    parser.add_argument(
+        "--rerank-pool",
+        type=int,
+        default=DEFAULT_RERANK_POOL,
+        help="candidate pool width when --rerank is set "
+        "(default sized by the 2026-08-16 miss-rank probe)",
+    )
     parser.add_argument("--profile", default=PROFILE)
     parser.add_argument("--region", default=REGION)
     args = parser.parse_args()
@@ -69,6 +83,8 @@ def main() -> int:
             question_set,
             k=args.k,
             min_evidence=args.min_evidence,
+            rerank=args.rerank,
+            rerank_pool=args.rerank_pool,
             require_ratified=not args.dry_run,
         )
     except UnratifiedAnswerKey as refused:
@@ -84,8 +100,9 @@ def main() -> int:
         print(rendered)
 
     overall = report.overall
+    mode = f"rerank(pool={report.rerank_pool})" if report.rerank else "raw"
     print(
-        f"n={report.n} k={report.k} · recall@k {overall.recall_at_k} · MRR {overall.mrr} "
+        f"n={report.n} k={report.k} [{mode}] · recall@k {overall.recall_at_k} · MRR {overall.mrr} "
         f"· stamp integrity {overall.stamp_integrity} ({overall.stamped}/{overall.passages})"
     )
     for stratum in report.by_stratum:
