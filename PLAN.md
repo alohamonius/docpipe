@@ -50,6 +50,8 @@ content) via Bedrock Knowledge Bases, with citations.
   sets `enableAurora: "false"` (`pulumi/Pulumi.dev.yaml:8`) and flipping it to
   true still would not produce a KB-attachable cluster — see the five gaps in
   Phase 2. "Primary" is the target, not the deployed state.
+  **Deferred 2026-08-16 (the human's): shipping on S3 Vectors alone; Aurora
+  and the benchmark move behind shipping — see Current priority.**
 - **KB corpus = `health.studio/build/kb/`**, produced by `pnpm kb:build` — **383
   chunk-final files + 383 `.metadata.json` sidecars** (192 prose from 20 docs,
   191 graph; 1,686,867 B). **Not `docs/`**: that tree holds files health.studio's
@@ -97,6 +99,20 @@ Execution order, and what each step is actually blocked on:
 > baseline: reshaping first leaves nothing to score the reshape against. Ingest
 > first, measure, then reshape against a control. Tracked as
 > `kb-retrieval-readiness/04-embedding-payload` in how2doo.
+
+> **Revised 2026-08-16 (human ruling): ship on S3 Vectors.** Steps 1–3 are
+> done — `NONE` chunking applied, first ingest (383 vectors), golden set +
+> baseline scored: **recall@5 0.7879**, signed report at
+> `docs/baselines/2026-08-16-s3vectors-baseline.json`, miss-rank probe on top.
+> Steps 4–6 (bibliography move, Aurora, the benchmark) are **deferred, not
+> deleted** — two KBs existed only for the benchmark, shipping needs one, and
+> time is the constraint. The S3-only path forward: **reranker over a widened
+> pool** (measured ceiling ~0.96 on the answerable set, no re-ingest; also the
+> fix for gap-04's outranked red-flag chunk), then abstention for the
+> not-covered class, then Phase 3. The bibliography move parks with Aurora —
+> as designed it needs non-filterable metadata the live S3 index cannot add
+> without a rebuild. conn-04/chain-03 phrasing fixes are content-side in
+> health.studio, unblocked anytime.
 
 Phases are deliberately **not renumbered**: FINDINGS.md and `docs/interview/`
 reference them by number. Only the execution order changed.
