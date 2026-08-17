@@ -1130,3 +1130,93 @@ The detector already existed and nobody was running it: `plan_prune` /
 `sync.py --dry-run` prints exactly this diff and mutates nothing. Cheap standing
 habit — dry-run the sync after any health.studio KB merge, not only before an
 ingest.
+## 2026-08-17 — the reranker, measured: +0.1139 MRR, four rescues, and two questions it broke
+
+`retrieve(rerank=True, rerank_pool=25)` was scored against the live KB on the
+same 66-question held-out set, the same index (`JDNNGSU1JT`, job `QPOVWZN9JY`,
+496 vectors) and a byte-identical corpus (`sha256:102455d7…`). Only the retrieval
+config moved. Row: how2doo `goals/kb-retrieval-readiness/inventory/corpus-census.json#scores[3]`.
+
+| | raw | rerank pool=25 | Δ |
+|---|---|---|---|
+| recall@5 | 0.7879 | **0.8182** | +0.0303 |
+| MRR | 0.5634 | **0.6773** | **+0.1139** |
+| hits at rank 1 | 29 | **39** | +10 |
+| stamp integrity | 1.0 (330 passages / 200 chunks) | 1.0 (330 / **207**) | 0 |
+
+**The headline is not the verdict, and the pre-registration is why that is
+legible.** health.studio's set pre-registered the acceptance test *before* the
+run — conn-09 **and** nerve-04 flip miss→hit — and a paired rule: real only at an
+exact two-sided binomial p < 0.05 on the discordant pairs. Measured: conn-09
+flipped to **rank 1**, nerve-04 did not flip at all, and the paired test gives
+**d = 6 but 4 versus 2 → p = 0.6875**. The hit/miss change is inside noise by the
+rule that was agreed in advance, even though both headline metrics rose.
+
+**Two questions were lost, and both are diagnostic rather than random.**
+
+- **biblio-01** — *"What are the sources behind your claims about myofascial
+  chains?"* was rank 2, now absent. The cross-encoder returned the five chain
+  chunks (SBL, LL, DFL, SFL, BFL) and dropped
+  `anatomy/01-myofascial-chains--09-sources.md`: **it matched the topic and
+  discarded the word "sources".** biblio-02 (identical shape, pain science) and
+  biblio-03 (bibliography inside a content chunk) both held at rank 1, so this is
+  a specific failure, not a whole-class one — a cross-encoder does not
+  systematically hate bibliographies, it out-ranks *this* one against five chunks
+  named for the thing the question names.
+- **nerve-01** — *"ring and little fingers go numb — which nerve?"* returned five
+  ulnar-**territory** items (`lumbrical_ulnar`, `carpal_tunnel`,
+  `abductor_digiti_minimi_hand`, `brachial_plexus-lower_trunk`,
+  `extensor_digiti_minimi`) and not the ulnar **nerve** chunk. That is the
+  muscle-vs-nerve discrimination the question set exists to test — the same
+  discrimination reranking *fixed* at conn-09. **Same mechanism, opposite sign,
+  same run.**
+
+**This repo's own miss-rank probe (`b0d7d1e`) is partly refuted, and its blind
+spot is now measured.** It predicted 7 rescuable misses at pool 25; **four
+landed** (conn-06 @4, conn-07 @1, conn-09 @1, entr-02 @3), **conn-08, conn-10 and
+nerve-04 did not**, and nothing outside the predicted set was rescued. It could
+not predict either loss, because it only re-ran the *misses*: **a rescue-only
+probe is structurally blind to what a reranker gives back.** Any future "what
+would X rescue" probe should re-rank the hits too, or say out loud that its
+ceiling is one-sided. (Fair caveat: the probe measured the 383-chunk corpus, this
+run the 496-chunk split, so pool composition moved between them.)
+
+One improvement worth naming because it is safety-adjacent: **gap-04** (*"can a
+heart problem cause pain down the left arm?"*) now returns the emergency
+red-flag screening chunk at **rank 1** (was 4) — though `gallbladder` and
+`diaphragm_referral` are still in its top 5, so it remains a forbidden violation.
+
+Nothing was adopted: `retrieve()` still defaults `rerank=False`, and
+`test_rerank_off_sends_the_pre_rerank_request_shape` still pins the raw path
+byte-identical. Whether to turn it on is health.studio's call, made against these
+numbers.
+
+## 2026-08-17 — `make kb-eval RERANK=--rerank` cannot run: 3 requests per minute, not adjustable
+
+The reranked eval fails with `ThrottlingException` on `Retrieve` — under
+botocore's default retries, and again under `AWS_RETRY_MODE=adaptive` with
+`AWS_MAX_ATTEMPTS=12`, which spent about eleven minutes before giving up. The
+error text is about request rate and the instinct is to retry harder. That is
+wrong, and one read-only call says so:
+
+```
+aws service-quotas get-service-quota --service-code bedrock --quota-code L-11512E58
+→ "On-demand model inference requests per minute for Cohere Rerank 3.5" = 3
+  QuotaAppliedAtLevel: ACCOUNT   Adjustable: false   (no change request on file)
+```
+
+**66 questions × one rerank call each therefore needs ≥22 minutes of wall clock
+however the client behaves.** botocore's backoff caps at 20 s per attempt because
+it is built for bursts, not for a 20-second-per-request budget — so every attempt
+it makes inside that window is another throttled request.
+
+The fix is pacing, not retrying, and it does not belong in the harness: a scratch
+wrapper (`.scratch/kb-eval-paced.py`) drives the **committed** `score_question_set`
+through a botocore client whose `retrieve` is spaced 22 s apart, and changes
+nothing else — same request body, same scorer, same metrics, same report shape.
+Result: **66 calls, 0 throttles, 1,432 s**. The `Rerank` requests-per-second quota
+(`L-0DD4EC92`, 10/s) is a decoy; the model's per-minute quota binds first.
+
+Budget a reranked eval as ~25 minutes and ~$0.13, not as "one eval like the
+baseline". A pass that budgets it the other way times out and reports that model
+access is broken, when it is not.
