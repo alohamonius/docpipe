@@ -248,6 +248,15 @@ def score_question_set(
 
     ``require_ratified`` defaults to True. Pass False only to exercise the
     harness itself — the number it produces is a dry run, not a baseline.
+
+    **``rerank`` defaults False here even though ``retrieve()`` now defaults
+    True, and the divergence is deliberate.** This harness is the instrument
+    that measured the flip; if its default tracked the library's, re-running the
+    2026-08-16 baseline would silently score the reranked path and the row it
+    is compared against would stop meaning what it says. Every mode is passed
+    explicitly and recorded on the report (``EvalReport.rerank`` /
+    ``rerank_pool``), so a stored score is self-describing. Change this default
+    and the raw baseline becomes unreproducible.
     """
     if require_ratified and not question_set.is_ratified:
         raise UnratifiedAnswerKey(

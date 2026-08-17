@@ -91,18 +91,41 @@ class KnowledgeBaseClient:
         top_k: int = 4,
         *,
         min_evidence: int | None = None,
-        rerank: bool = False,
+        rerank: bool = True,
         rerank_pool: int = DEFAULT_RERANK_POOL,
     ) -> list[RetrievedPassage]:
         """Retrieve passages, optionally refusing anything below an evidence floor.
 
-        ``rerank=True`` widens the vector search to ``rerank_pool`` candidates
-        and has Bedrock's ``cohere.rerank-v3-5`` cross-encoder re-read them
-        against the query before cutting back to ``top_k`` — one server-side
-        call, same response shape, nothing changes for the caller. The pool
-        must be wider than ``top_k`` or the reranker can only reorder the same
-        near-misses it was meant to rescue; anything at rank > pool never
-        enters the pool and cannot be recovered by reranking at all.
+        Reranking widens the vector search to ``rerank_pool`` candidates and has
+        Bedrock's ``cohere.rerank-v3-5`` cross-encoder re-read them against the
+        query before cutting back to ``top_k`` — one server-side call, same
+        response shape, nothing changes for the caller. The pool must be wider
+        than ``top_k`` or the reranker can only reorder the same near-misses it
+        was meant to rescue; anything at rank > pool never enters the pool and
+        cannot be recovered by reranking at all.
+
+        **It is ON by default, ruled 2026-08-17** (how2doo
+        ``goals/kb-retrieval-readiness/04-embedding-payload/goal.md``, *HUMAN
+        RULING 2026-08-17 (later)*), on a number measured twice against the same
+        66-question held-out set and the same live index: recall@5 0.7879 →
+        0.8182, MRR 0.5634 → 0.6773, hits at rank 1 29 → 39. The re-run was a
+        control (``--rerun-of``) and came back identical to four decimals with an
+        identical miss set, so the trade below is stable rather than variance.
+
+        **Two losses ship with it, named and accepted by that ruling**, because a
+        default that hides its cost is a default nobody can audit: *biblio-01*
+        ("what are the sources behind…") — the cross-encoder matches the topic
+        and discards the word *sources*, so it returns five chain chunks and
+        drops the bibliography one — and *nerve-01*, which comes back with ulnar
+        *territory* rather than the ulnar *nerve*. Both are reproducible.
+
+        **``rerank=False`` is the supported opt-out and it matters
+        operationally**: Cohere Rerank 3.5 is **3 on-demand requests per minute
+        at ACCOUNT level and not adjustable** (``service-quotas L-11512E58``), so
+        the reranked path suits low-volume or self-paced callers. Anything bursty
+        must pass ``rerank=False`` or pace itself — 66 queries take ~24 minutes
+        reranked. That path is pinned byte-identical by
+        ``test_rerank_off_sends_the_pre_rerank_request_shape``.
 
         Reranking runs under the **KB service role**, not the caller — Bedrock
         assumes ``<prefix>-kb-role`` for the rerank step, so that role needs

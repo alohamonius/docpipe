@@ -45,7 +45,15 @@ def test_retrieve_returns_passages_with_sources() -> None:
     call = fake.calls[0]
     assert call["knowledgeBaseId"] == "kb-123"
     assert call["retrievalQuery"] == {"text": "hamstring rehab"}
-    assert call["retrievalConfiguration"]["vectorSearchConfiguration"]["numberOfResults"] == 2
+    # ``top_k`` is still honoured on the default path — since the 2026-08-17
+    # adoption it is honoured by the rerank cut-back rather than by the vector
+    # search, which now fetches the wider candidate pool the reranker reads.
+    search = call["retrievalConfiguration"]["vectorSearchConfiguration"]
+    assert search["numberOfResults"] == DEFAULT_RERANK_POOL
+    assert (
+        search["rerankingConfiguration"]["bedrockRerankingConfiguration"]["numberOfRerankedResults"]
+        == 2
+    )
 
 
 def test_source_from_s3_location_fallback() -> None:
@@ -206,11 +214,39 @@ def test_rerank_widens_the_pool_and_cuts_back_to_top_k() -> None:
     assert inner["modelConfiguration"]["modelArn"].endswith(RERANK_MODEL_ID)
 
 
-def test_rerank_off_sends_the_pre_rerank_request_shape() -> None:
-    """The default path must stay byte-identical to before reranking existed —
-    it is the shape the committed 2026-08-16 baseline was measured on."""
+def test_rerank_is_on_by_default() -> None:
+    """Adopted 2026-08-17: a caller who asks for nothing gets the reranked path.
+
+    The ruling that flipped this (how2doo
+    ``goals/kb-retrieval-readiness/04-embedding-payload/goal.md``, *HUMAN RULING
+    2026-08-17 (later)*) bought recall@5 0.7879 → 0.8182 and MRR 0.5634 →
+    0.6773, replicated twice, against two named and accepted losses. The default
+    is the whole decision, so it is asserted rather than left to the signature.
+    """
     fake = FakeAgentRuntime([])
     KnowledgeBaseClient("kb-123", agent_runtime_client=fake).retrieve("q", top_k=4)
+
+    search = fake.calls[0]["retrievalConfiguration"]["vectorSearchConfiguration"]
+    assert "rerankingConfiguration" in search, (
+        "the default retrieve() no longer reranks — that is the 2026-08-17 "
+        "adoption ruling being reverted by accident"
+    )
+    assert search["numberOfResults"] == DEFAULT_RERANK_POOL
+    inner = search["rerankingConfiguration"]["bedrockRerankingConfiguration"]
+    assert inner["numberOfRerankedResults"] == 4
+
+
+def test_rerank_off_sends_the_pre_rerank_request_shape() -> None:
+    """The raw path stays reachable, and pinned, as an EXPLICIT ``rerank=False``.
+
+    It is the shape the committed 2026-08-16 baseline was measured on, so it has
+    to keep existing byte-identical even though it is no longer the default —
+    the eval harness scores raw and reranked side by side, and a bursty caller
+    needs it because Cohere Rerank 3.5 is 3 req/min account-wide (not
+    adjustable). Re-aimed, not deleted, when the default flipped.
+    """
+    fake = FakeAgentRuntime([])
+    KnowledgeBaseClient("kb-123", agent_runtime_client=fake).retrieve("q", top_k=4, rerank=False)
 
     search = fake.calls[0]["retrievalConfiguration"]["vectorSearchConfiguration"]
     assert search == {"numberOfResults": 4}
