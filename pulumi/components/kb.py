@@ -35,12 +35,17 @@ class KnowledgeBase(pulumi.ComponentResource):
         *,
         embedding_model_id: str = "amazon.titan-embed-text-v2:0",
         embedding_dimension: int = 1024,
+        rerank_model_id: str = "cohere.rerank-v3-5:0",
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         super().__init__("docpipe:kb:KnowledgeBase", prefix, None, opts)
         me = pulumi.ResourceOptions(parent=self)
 
         embedding_model_arn = f"arn:aws:bedrock:{region}::foundation-model/{embedding_model_id}"
+        # Same region as the retrieve it belongs to — retrieval.py builds the
+        # identical ARN from its runtime client's region, and a grant that
+        # disagreed with it would 403 under the KB role rather than the caller.
+        rerank_model_arn = f"arn:aws:bedrock:{region}::foundation-model/{rerank_model_id}"
 
         # Source bucket the corpus syncs into.
         source = aws.s3.Bucket(
@@ -161,7 +166,7 @@ class KnowledgeBase(pulumi.ComponentResource):
                             "Sid": "InvokeRerankModel",
                             "Effect": "Allow",
                             "Action": "bedrock:InvokeModel",
-                            "Resource": f"arn:aws:bedrock:{region}::foundation-model/cohere.rerank-v3-5:0",
+                            "Resource": rerank_model_arn,
                         },
                     ],
                 }

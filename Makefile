@@ -3,15 +3,31 @@
 sync:
 	uv sync --all-packages
 
-fmt:
-	uv run ruff format packages services scripts
+# PULUMI IS IN THE LINT SET, and it has to be spelled out here because CI splits
+# it into a separate job (.github/workflows/ci.yml: `python` lints packages /
+# services / scripts, `infra` lints pulumi/components + pulumi/__main__.py).
+PY_SRC ?= packages services scripts
+INFRA_SRC ?= pulumi/components pulumi/__main__.py
 
-# Both halves, because CI runs both. `ruff check` alone went green locally while
-# CI failed on `format --check` for two consecutive runs — a gate you can pass
-# locally and fail remotely is a gate people learn to ignore.
+fmt:
+	uv run ruff format $(PY_SRC) $(INFRA_SRC)
+
+# Both halves of ruff AND both halves of the tree, because CI runs all four.
+# `ruff check` alone went green locally while CI failed on `format --check` for
+# two consecutive runs — a gate you can pass locally and fail remotely is a gate
+# people learn to ignore. The same hole reopened on the pulumi side and cost a
+# red PR: `lint` covered only $(PY_SRC), so a 107-char line added to
+# pulumi/components/kb.py by the rerank IAM grant passed every local gate and
+# failed CI's `infra` job. A second job nobody can run locally is the same bug as
+# a second command nobody runs locally.
+#
+# One residual divergence, named rather than papered over: CI's infra job invokes
+# `uvx ruff` (unpinned, latest) where everything here uses `uv run ruff` (the
+# locked dev dep). A new ruff release can therefore still fail CI on a tree this
+# target calls clean. Aligning them is a repo-owner call, not a lint fix.
 lint:
-	uv run ruff check packages services scripts
-	uv run ruff format --check packages services scripts
+	uv run ruff check $(PY_SRC) $(INFRA_SRC)
+	uv run ruff format --check $(PY_SRC) $(INFRA_SRC)
 
 typecheck:
 	uv run mypy packages/core/src
