@@ -4,14 +4,18 @@
 - storage: S3 documents + DynamoDB job records
 - queue: SQS publish/consume
 - llm: Bedrock via the Converse API (DeepSeek default) — ChatClient + SummarizerClient
+- agent: the Converse tool loop — KbAgent drives search_kb over a Knowledge Base
 - observability: structured logging + CloudWatch EMF metrics
 """
 
+from docpipe_core.agent import AgentSession, KbAgent, ToolCall
 from docpipe_core.kb_sync import (
     DEFAULT_MAX_DELETE_RATIO,
+    DEFAULT_MAX_DOC_BYTES,
     BlastRadiusRefused,
     CorpusSyncer,
     IngestionOutcome,
+    OversizedDocRefused,
     PlannedDoc,
     PrunedKey,
     SyncAction,
@@ -41,7 +45,9 @@ __version__ = "0.1.0"
 
 __all__ = [
     "DEFAULT_MAX_DELETE_RATIO",
+    "DEFAULT_MAX_DOC_BYTES",
     "HEALTH_ASSISTANT_SYSTEM",
+    "AgentSession",
     "BlastRadiusRefused",
     "ChatClient",
     "ChatMessage",
@@ -54,8 +60,10 @@ __all__ = [
     "JobQueue",
     "JobStatus",
     "JobStore",
+    "KbAgent",
     "KnowledgeBaseClient",
     "ModelInvocationError",
+    "OversizedDocRefused",
     "PlannedDoc",
     "PrunedKey",
     "QueueMessage",
@@ -64,6 +72,7 @@ __all__ = [
     "SummaryResult",
     "SyncAction",
     "SyncReport",
+    "ToolCall",
     "configure_logging",
     "discover_corpus",
     "emit_metric",

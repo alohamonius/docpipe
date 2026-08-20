@@ -3,11 +3,10 @@
     make kb-agentic-eval KB_ID=... OUT=... [SEARCH="--search-type HYBRID"] \
         [FLAGS="--semantic-score-is-distance"]
 
-The single-shot harness (`kb_eval.py`) measures one Retrieve per question.
-This one measures the loop the agent actually runs (FINDINGS 2026-08-18): a
-hand-written Converse tool loop, `deepseek.v3.2`, one `search_kb(query,
-min_evidence)` tool, the model free to reformulate and call it repeatedly up
-to MAX_ITERATIONS.
+A thin shell, same contract as ``kb_eval.py``: the loop itself lives in
+``docpipe_core.agent`` (typed, 8 unit tests), scoring reuses the tested
+``chunk_key_of``, and this file only parses arguments, iterates questions and
+writes the report.
 
 **The metrics are session-level and deliberately NOT MRR.** A multi-query
 session has no single ranked list, so reporting MRR here would invite
@@ -18,159 +17,24 @@ What is scored instead, per question:
 * ``first_hit_call``/``rank_at_first_hit`` — how much work it took
 * ``forbidden_returned`` — a must-not-return chunk appeared in ANY call
 * ``tool_calls``, tokens, wall seconds — the stateless tax, per question
-
-Rerank stays OFF inside the tool: cohere.rerank-v3-5 is 3 req/min at ACCOUNT
-level, and an agent making 3 tool calls per question would starve on it.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import random
 import statistics
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
 import boto3
-from botocore.exceptions import ClientError
+from docpipe_core.agent import DEFAULT_MAX_ITERATIONS, KbAgent
 from docpipe_core.kb_eval import UnratifiedAnswerKey, chunk_key_of, load_question_set
-from docpipe_core.llm import HEALTH_ASSISTANT_SYSTEM
 from docpipe_core.retrieval import KnowledgeBaseClient
 
 PROFILE = "docpipe"
 REGION = "us-east-1"
-MODEL_ID = "deepseek.v3.2"  # ON_DEMAND, tool use; R1 has neither (FINDINGS 2026-08)
-MAX_ITERATIONS = 5
-
-TOOL_CONFIG = {
-    "tools": [
-        {
-            "toolSpec": {
-                "name": "search_kb",
-                "description": (
-                    "Search the health.studio knowledge base for evidence-graded "
-                    "passages about anatomy, pain, training and recovery. Pass "
-                    "min_evidence=1 when the question is about the user's pain."
-                ),
-                "inputSchema": {
-                    "json": {
-                        "type": "object",
-                        "properties": {
-                            "query": {"type": "string"},
-                            "min_evidence": {"type": "integer", "minimum": 0, "maximum": 3},
-                        },
-                        "required": ["query"],
-                    }
-                },
-            }
-        }
-    ]
-}
-
-
-def _retryable(e: ClientError) -> bool:
-    code = e.response["Error"]["Code"]
-    if code in ("ThrottlingException", "ServiceUnavailableException"):
-        return True
-    # An Aurora min-ACU-0 resume surfaces through Retrieve as a
-    # ValidationException with this message (hit live 2026-08-20, killed both
-    # Aurora agentic runs on their first call). Only that one is retryable —
-    # a genuinely invalid request must still fail fast.
-    return code == "ValidationException" and "resuming after being auto-paused" in str(e)
-
-
-def _with_backoff(call, *, retries: int = 4):
-    """Throttle-tolerant wrapper; jittered exponential, same shape as llm.py."""
-    for attempt in range(retries + 1):
-        try:
-            return call()
-        except ClientError as e:
-            if not _retryable(e) or attempt == retries:
-                raise
-            time.sleep(2**attempt + random.random())
-    raise RuntimeError("unreachable")
-
-
-def run_session(
-    runtime: Any,
-    kb: KnowledgeBaseClient,
-    question: str,
-    *,
-    k: int,
-    search_type: str | None,
-) -> dict[str, Any]:
-    """One question through the tool loop; returns raw per-session telemetry."""
-    messages: list[dict[str, Any]] = [{"role": "user", "content": [{"text": question}]}]
-    retrievals: list[list[str]] = []
-    tokens_in = tokens_out = 0
-    stop = None
-    t0 = time.perf_counter()
-
-    for _ in range(MAX_ITERATIONS):
-        response = _with_backoff(
-            lambda: runtime.converse(
-                modelId=MODEL_ID,
-                system=[{"text": HEALTH_ASSISTANT_SYSTEM + " Use the search_kb tool for facts."}],
-                messages=messages,
-                toolConfig=TOOL_CONFIG,
-                inferenceConfig={"maxTokens": 1024, "temperature": 0.3},
-            )
-        )
-        usage = response.get("usage", {})
-        tokens_in += usage.get("inputTokens", 0)
-        tokens_out += usage.get("outputTokens", 0)
-        stop = response.get("stopReason")
-        output_message = response["output"]["message"]
-        if stop != "tool_use":
-            break
-
-        messages.append({"role": "assistant", "content": output_message["content"]})
-        # V3.2 sometimes emits SEVERAL toolUse blocks in one message (parallel
-        # searches — observed live 2026-08-20). Converse requires every one of
-        # their toolResults in a SINGLE following user message; one message per
-        # result fails validation ("Expected toolResult blocks at
-        # messages.N.content for the following Ids: …").
-        tool_results: list[dict[str, Any]] = []
-        for block in output_message["content"]:
-            if "toolUse" not in block:
-                continue
-            tool_use = block["toolUse"]
-            query = tool_use["input"]["query"]
-            floor = tool_use["input"].get("min_evidence")
-            passages = _with_backoff(
-                lambda query=query, floor=floor: kb.retrieve(
-                    query,
-                    top_k=k,
-                    min_evidence=floor,
-                    rerank=False,
-                    search_type=search_type,
-                )
-            )
-            retrievals.append([key for p in passages if (key := chunk_key_of(p)) is not None])
-            rendered = (
-                "\n\n".join(f"[{p.citation}]\n{p.text[:600]}" for p in passages)
-                or "No passages found."
-            )
-            tool_results.append(
-                {
-                    "toolResult": {
-                        "toolUseId": tool_use["toolUseId"],
-                        "content": [{"text": rendered}],
-                    }
-                }
-            )
-        messages.append({"role": "user", "content": tool_results})
-
-    return {
-        "retrievals": retrievals,
-        "tokens_in": tokens_in,
-        "tokens_out": tokens_out,
-        "stop_reason": stop,
-        "wall_s": round(time.perf_counter() - t0, 2),
-    }
 
 
 def main() -> int:
@@ -192,20 +56,29 @@ def main() -> int:
         raise UnratifiedAnswerKey("unratified key; pass --dry-run for a rehearsal")
 
     session = boto3.Session(profile_name=args.profile, region_name=args.region)
-    runtime = session.client("bedrock-runtime")
     kb = KnowledgeBaseClient(
         args.kb_id,
         agent_runtime_client=session.client("bedrock-agent-runtime"),
         semantic_score_is_distance=args.semantic_score_is_distance,
     )
+    agent = KbAgent(
+        kb,
+        bedrock_client=session.client("bedrock-runtime"),
+        top_k=args.k,
+        search_type=args.search_type,
+    )
 
     questions = question_set.questions[: args.limit] if args.limit else question_set.questions
-    results = []
+    results: list[dict[str, Any]] = []
     for i, q in enumerate(questions, 1):
-        raw = run_session(runtime, kb, q.question, k=args.k, search_type=args.search_type)
-        union = [key for call in raw["retrievals"] for key in call]
+        run = agent.ask(q.question)
+        retrievals = [
+            [key for p in call.passages if (key := chunk_key_of(p)) is not None]
+            for call in run.tool_calls
+        ]
+        union = [key for call in retrievals for key in call]
         first_hit_call = rank_at_first_hit = None
-        for call_no, call in enumerate(raw["retrievals"], 1):
+        for call_no, call in enumerate(retrievals, 1):
             hit_ranks = [pos for pos, key in enumerate(call, 1) if key in q.expected]
             if hit_ranks:
                 first_hit_call, rank_at_first_hit = call_no, hit_ranks[0]
@@ -218,31 +91,30 @@ def main() -> int:
                 "session_hit": first_hit_call is not None,
                 "first_hit_call": first_hit_call,
                 "rank_at_first_hit": rank_at_first_hit,
-                "tool_calls": len(raw["retrievals"]),
+                "tool_calls": len(retrievals),
                 "forbidden_returned": sorted({k_ for k_ in union if k_ in q.must_not_return}),
-                "stop_reason": raw["stop_reason"],
-                "tokens_in": raw["tokens_in"],
-                "tokens_out": raw["tokens_out"],
-                "wall_s": raw["wall_s"],
-                "queries_retrieved": raw["retrievals"],
+                "stop_reason": run.stop_reason,
+                "tokens_in": run.input_tokens,
+                "tokens_out": run.output_tokens,
+                "wall_s": run.wall_s,
+                "queries_retrieved": retrievals,
             }
         )
         print(
             f"[{i}/{len(questions)}] {q.id}: hit={first_hit_call is not None} "
-            f"calls={len(raw['retrievals'])} wall={raw['wall_s']}s",
+            f"calls={len(retrievals)} wall={run.wall_s}s",
             flush=True,
         )
 
-    n = len(results)
     scored = [r for r in results if r["question_class"] != "not-covered"]
     gap = [r for r in results if r["question_class"] == "not-covered"]
     walls = sorted(r["wall_s"] for r in results)
     report = {
         "mode": "agentic",
-        "model_id": MODEL_ID,
-        "max_iterations": MAX_ITERATIONS,
+        "model_id": agent.model_id,
+        "max_iterations": DEFAULT_MAX_ITERATIONS,
         "k": args.k,
-        "n": n,
+        "n": len(results),
         "search_type": args.search_type,
         "semantic_score_is_distance": args.semantic_score_is_distance,
         "rerank": False,

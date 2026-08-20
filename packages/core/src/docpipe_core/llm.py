@@ -30,6 +30,20 @@ _RETRYABLE_ERRORS = {
 # Reasoning models may inline their scratchpad; the answer follows it.
 _THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
 
+
+def extract_answer_text(response: dict[str, Any]) -> str:
+    """The user-facing text of a Converse response, scratchpad stripped.
+
+    Module-level because two Converse callers need it: the clients below and
+    the tool-loop agent (``agent.py``), which cannot inherit from
+    ``_ConverseClient`` — its call shape (toolConfig, message replay) is
+    different, only the text extraction is shared.
+    """
+    blocks = response.get("output", {}).get("message", {}).get("content", [])
+    text = "".join(block["text"] for block in blocks if "text" in block)
+    return _THINK_BLOCK.sub("", text).strip()
+
+
 _SUMMARY_PROMPT = (
     "Summarize the following document in at most {max_words} words. "
     "Reply with the summary only — no preamble.\n\n{text}"
@@ -129,9 +143,7 @@ class _ConverseClient:
 
     @staticmethod
     def _extract_text(response: dict[str, Any]) -> str:
-        blocks = response.get("output", {}).get("message", {}).get("content", [])
-        text = "".join(block["text"] for block in blocks if "text" in block)
-        return _THINK_BLOCK.sub("", text).strip()
+        return extract_answer_text(response)
 
 
 class ChatClient(_ConverseClient):
