@@ -485,3 +485,83 @@ def test_default_ratio_admits_the_biggest_routine_rename(tmp_path: Path, s3_buck
     report = syncer(s3_bucket, FakeAgent([])).sync(tmp_path, start_ingestion=False)
 
     assert len(report.pruned) == 2
+
+
+# ── The oversized-document guard ───────────────────────────────────────────
+# Titan v2 caps embedding input at 8,192 tokens; with `chunkingStrategy: NONE`
+# one file is one embedding call, so an oversized file is a FAILED document at
+# ingestion — discovered by polling, minutes after the upload that doomed it.
+# The plan refuses first, before anything lands in the bucket.
+
+
+def oversized_doc(root: Path, words: int = 10_000) -> Path:
+    """A document well past the 32 KiB default (≈50 KB ≈ 12.5k estimated tokens)."""
+    doc = root / "anatomy" / "encyclopedia.md"
+    doc.write_text("word " * words)
+    return doc
+
+
+def test_plan_refuses_a_document_past_the_embedding_cap(tmp_path: Path, s3_bucket) -> None:
+    from docpipe_core.kb_sync import OversizedDocRefused
+
+    make_corpus(tmp_path)
+    oversized_doc(tmp_path)
+
+    with pytest.raises(OversizedDocRefused) as exc:
+        syncer(s3_bucket, FakeAgent([])).plan(tmp_path)
+
+    assert "encyclopedia.md" in str(exc.value)
+    assert "8,192" in str(exc.value)  # the cap being proxied is named
+    assert "--max-doc-bytes" in str(exc.value)  # and so is the escape hatch
+
+
+def test_oversized_guard_refuses_before_uploading_anything(tmp_path: Path, s3_bucket) -> None:
+    """The small, valid files must not land either — a refused sync mutates nothing."""
+    from docpipe_core.kb_sync import OversizedDocRefused
+
+    make_corpus(tmp_path)
+    oversized_doc(tmp_path)
+    agent = FakeAgent(["STARTING", "COMPLETE"])
+
+    with pytest.raises(OversizedDocRefused):
+        syncer(s3_bucket, agent).sync(tmp_path, wait=False)
+
+    assert remote_keys(s3_bucket) == []
+    assert agent.start_calls == []
+
+
+def test_oversized_guard_is_a_limit_not_a_veto(tmp_path: Path, s3_bucket) -> None:
+    """A corpus measured to embed anyway says the number out loud and proceeds."""
+    make_corpus(tmp_path)
+    oversized_doc(tmp_path)
+
+    report = syncer(s3_bucket, FakeAgent([])).sync(
+        tmp_path, start_ingestion=False, max_doc_bytes=64 * 1024
+    )
+
+    assert "corpus/anatomy/encyclopedia.md" in [d.key for d in report.uploaded]
+
+
+def test_sidecars_are_exempt_from_the_size_guard(tmp_path: Path, s3_bucket) -> None:
+    """A sidecar produces no vector, so the token cap does not apply to it; its
+    2 KB filterable-metadata limit is Bedrock's own, enforced at ingestion."""
+    make_corpus(tmp_path)
+    doc = tmp_path / "index.md"
+    doc.with_name(doc.name + ".metadata.json").write_text(
+        json.dumps({"metadataAttributes": {}}) + " " * 40_000
+    )
+
+    planned = syncer(s3_bucket, FakeAgent([])).plan(tmp_path)
+
+    assert [d.key for d in planned if d.sidecar] == ["corpus/index.md.metadata.json"]
+
+
+def test_default_limit_admits_the_largest_real_chunk() -> None:
+    """32 KiB is measured, not picked: the corpus's largest chunk is 24.7 KB
+    ≈ 5k tokens (~4.9 B/token), so every real chunk clears the default with
+    ~30% headroom, while a file that trips it is plausibly past Titan's
+    8,192-token cap at the generous 4 B/token estimate."""
+    from docpipe_core.kb_sync import DEFAULT_MAX_DOC_BYTES, TITAN_V2_MAX_TOKENS
+
+    assert DEFAULT_MAX_DOC_BYTES == TITAN_V2_MAX_TOKENS * 4
+    assert DEFAULT_MAX_DOC_BYTES > 24_700

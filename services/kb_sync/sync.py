@@ -41,7 +41,13 @@ import sys
 from functools import cache
 from pathlib import Path
 
-from docpipe_core.kb_sync import DEFAULT_MAX_DELETE_RATIO, BlastRadiusRefused, CorpusSyncer
+from docpipe_core.kb_sync import (
+    DEFAULT_MAX_DELETE_RATIO,
+    DEFAULT_MAX_DOC_BYTES,
+    BlastRadiusRefused,
+    CorpusSyncer,
+    OversizedDocRefused,
+)
 
 # Default location of the Pulumi program, relative to the repo root.
 _DEFAULT_PULUMI_DIR = Path(__file__).resolve().parents[2] / "pulumi"
@@ -256,6 +262,16 @@ def build_parser() -> argparse.ArgumentParser:
             f"keys under the prefix (default {DEFAULT_MAX_DELETE_RATIO:.0%}; 1.0 disables)"
         ),
     )
+    parser.add_argument(
+        "--max-doc-bytes",
+        dest="max_doc_bytes",
+        type=int,
+        default=DEFAULT_MAX_DOC_BYTES,
+        help=(
+            "refuse the sync if any document exceeds this size — a proxy for Titan v2's "
+            f"8,192-token embedding cap (default {DEFAULT_MAX_DOC_BYTES:,} B)"
+        ),
+    )
     return parser
 
 
@@ -286,7 +302,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.dry_run:
         # plan()/plan_prune() read local files + list/HEAD S3, and never mutate.
-        report_docs = syncer.plan(root)
+        try:
+            report_docs = syncer.plan(root, max_doc_bytes=args.max_doc_bytes)
+        except OversizedDocRefused as refused:
+            print(f"\n⛔ {refused}", file=sys.stderr)
+            return 2
         from docpipe_core.kb_sync import SyncReport
 
         _print_report(SyncReport(docs=report_docs), dry_run=True)
@@ -301,9 +321,10 @@ def main(argv: list[str] | None = None) -> int:
             wait=not args.no_wait,
             prune=not args.no_prune,
             max_delete_ratio=args.max_delete_ratio,
+            max_doc_bytes=args.max_doc_bytes,
         )
-    except BlastRadiusRefused as refused:
-        # Not a crash — the guard doing its job. Say so, and say it loudly.
+    except (BlastRadiusRefused, OversizedDocRefused) as refused:
+        # Not a crash — a guard doing its job. Say so, and say it loudly.
         print(f"\n⛔ {refused}", file=sys.stderr)
         return 2
     _print_report(report, dry_run=False)

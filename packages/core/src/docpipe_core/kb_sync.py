@@ -39,6 +39,11 @@ knowing:
     vector from that document. That is what makes `min_evidence` filtering and
     named citations possible downstream (see `retrieval.py`). They are pruned
     *with* their document and never before it.
+  * **An oversized document is refused at plan time.** Titan v2 caps embedding
+    input at 8,192 tokens, and `chunkingStrategy: NONE` makes one file one
+    embedding call — so a too-big file is a FAILED document at *ingestion*,
+    discovered by polling, minutes after the upload that doomed it. The plan
+    refuses first and mutates nothing. See `OversizedDocRefused`.
 """
 
 from __future__ import annotations
@@ -87,6 +92,19 @@ _MISSING_OBJECT_CODES = frozenset({"404", "NoSuchKey", "NotFound"})
 # `build/kb` or a --source one directory too deep lands far above it.
 DEFAULT_MAX_DELETE_RATIO = 0.10
 
+# Titan v2 refuses embedding inputs past 8,192 tokens. The guard works in bytes
+# because the true tokenizer lives server-side; 4 B/token is deliberately
+# generous for this corpus — its largest chunk measures 24.7 KB ≈ 5k tokens
+# (~4.9 B/token) — so every real chunk clears the 32 KiB limit with ~30%
+# headroom, while a file that trips it is plausibly past the model's cap and
+# worth a human look either way. The proxy assumes Latin-script UTF-8:
+# CJK/Greek-heavy text runs ~3 B per character at ~1 token per character, so a
+# 30 KB file could clear the byte gate yet exceed the token cap — restate this
+# before pointing the guard at a non-English corpus.
+TITAN_V2_MAX_TOKENS = 8192
+_BYTES_PER_TOKEN = 4
+DEFAULT_MAX_DOC_BYTES = TITAN_V2_MAX_TOKENS * _BYTES_PER_TOKEN  # 32 KiB
+
 
 class BlastRadiusRefused(RuntimeError):
     """A prune would remove more of the bucket than the caller allowed.
@@ -108,6 +126,30 @@ class BlastRadiusRefused(RuntimeError):
             "  Rebuild with `pnpm kb:build` and re-run.\n"
             "  If this many chunks really are retiring, say the number out loud:\n"
             "  --max-delete-ratio 1.0 (or any value above the ratio printed above)."
+        )
+
+
+class OversizedDocRefused(ValueError):
+    """A document likely exceeds the embedding model's token cap.
+
+    Raised at plan time — before any upload — because with one-file-one-vector
+    the alternative is a FAILED document surfacing mid-ingestion. Sidecars are
+    exempt: they produce no vector, and their 2 KB filterable-metadata cap is
+    Bedrock's own constraint, enforced at ingestion.
+    """
+
+    def __init__(self, docs: list[tuple[str, int]], limit: int) -> None:
+        self.docs = docs
+        self.limit = limit
+        listing = "\n".join(f"  {path} — {size:,} B" for path, size in docs)
+        super().__init__(
+            f"{len(docs)} document(s) exceed {limit:,} B (≈{limit // _BYTES_PER_TOKEN:,} tokens "
+            f"at {_BYTES_PER_TOKEN} B/token; Titan v2 caps at {TITAN_V2_MAX_TOKENS:,}); "
+            "nothing was uploaded.\n"
+            f"{listing}\n"
+            "  Split the source document upstream (`pnpm kb:build`) so each chunk embeds\n"
+            "  whole, or — if the file is measured to fit anyway — raise max_doc_bytes\n"
+            "  (--max-doc-bytes) above the size printed above."
         )
 
 
@@ -253,13 +295,21 @@ class CorpusSyncer:
         """S3 key = prefix + the file's path relative to the corpus root."""
         return f"{self.prefix}{path.relative_to(root).as_posix()}"
 
-    def plan(self, root: Path) -> list[PlannedDoc]:
-        """What ``sync`` would do — upload vs skip per file, no mutations."""
+    def plan(self, root: Path, *, max_doc_bytes: int = DEFAULT_MAX_DOC_BYTES) -> list[PlannedDoc]:
+        """What ``sync`` would do — upload vs skip per file, no mutations.
+
+        Refuses (``OversizedDocRefused``) when any document is likely past the
+        embedding model's token cap, naming every offender at once rather than
+        failing them one ingestion at a time.
+        """
         planned: list[PlannedDoc] = []
+        oversized: list[tuple[str, int]] = []
         for path in discover_corpus(root):
             data = path.read_bytes()
             digest = _digest(data)
             key = self.key_for(root, path)
+            if not is_sidecar(path) and len(data) > max_doc_bytes:
+                oversized.append((str(path), len(data)))
             action = (
                 SyncAction.SKIPPED if self._matches_remote(key, digest) else SyncAction.UPLOADED
             )
@@ -273,6 +323,8 @@ class CorpusSyncer:
                     sidecar=is_sidecar(path),
                 )
             )
+        if oversized:
+            raise OversizedDocRefused(oversized, max_doc_bytes)
         return planned
 
     def list_remote_keys(self) -> set[str]:
@@ -325,6 +377,7 @@ class CorpusSyncer:
         wait: bool = True,
         prune: bool = True,
         max_delete_ratio: float = DEFAULT_MAX_DELETE_RATIO,
+        max_doc_bytes: int = DEFAULT_MAX_DOC_BYTES,
         poll_interval: float = 5.0,
         timeout: float = 900.0,
         sleep: Callable[[float], None] = time.sleep,
@@ -341,7 +394,7 @@ class CorpusSyncer:
         if not root.is_dir():
             raise ValueError(f"corpus root is not a directory: {root}")
 
-        planned = self.plan(root)
+        planned = self.plan(root, max_doc_bytes=max_doc_bytes)
         # The whole diff is computed, and the guard consulted, before the first
         # mutation. A refusal means "this local tree is not trustworthy", and a
         # tree that cannot be trusted to delete cannot be trusted to upload
