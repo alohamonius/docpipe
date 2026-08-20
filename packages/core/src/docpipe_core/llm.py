@@ -7,6 +7,7 @@ to any Bedrock model ID without code changes.
 
 from __future__ import annotations
 
+import random
 import re
 import time
 from collections.abc import Callable, Sequence
@@ -75,6 +76,7 @@ class _ConverseClient:
         bedrock_client: Any = None,
         max_retries: int = 3,
         sleep: Callable[[float], None] = time.sleep,
+        rng: Callable[[], float] = random.random,
         max_tokens: int | None = None,
         guardrail_id: str | None = None,
         guardrail_version: str = "DRAFT",
@@ -83,6 +85,7 @@ class _ConverseClient:
         self._bedrock = bedrock_client or boto3.client("bedrock-runtime")
         self._max_retries = max_retries
         self._sleep = sleep
+        self._rng = rng
         self._max_tokens = max_tokens if max_tokens is not None else self.DEFAULT_MAX_TOKENS
         self._guardrail_id = guardrail_id
         self._guardrail_version = guardrail_version
@@ -117,7 +120,11 @@ class _ConverseClient:
                 if code not in _RETRYABLE_ERRORS or attempt == self._max_retries:
                     raise ModelInvocationError(f"Bedrock converse failed: {code}") from exc
                 last_error = exc
-                self._sleep(2**attempt)
+                # A bare 2**attempt synchronises a throttled fleet: N Lambdas
+                # 429'd in the same second all wake in the same second and
+                # refail together, forever. Up to 1 s of jitter spreads the
+                # wave; the power-of-two floor keeps the backoff.
+                self._sleep(2**attempt + self._rng())
         raise ModelInvocationError("Bedrock converse failed") from last_error
 
     @staticmethod

@@ -26,13 +26,28 @@ def test_reasoning_scratchpad_is_stripped() -> None:
 def test_retries_on_throttle_then_succeeds() -> None:
     sleeps: list[float] = []
     fake = FakeBedrock([throttle(), throttle(), converse_response("ok")])
-    client = SummarizerClient(bedrock_client=fake, sleep=sleeps.append)
+    client = SummarizerClient(bedrock_client=fake, sleep=sleeps.append, rng=lambda: 0.25)
 
     result = client.summarize("doc")
 
     assert result.summary == "ok"
     assert len(fake.calls) == 3
-    assert sleeps == [1, 2]
+    assert sleeps == [1.25, 2.25]  # 2**attempt floor + injected jitter
+
+
+def test_backoff_jitter_desynchronises_a_throttled_fleet() -> None:
+    """Every wait is its power-of-two floor plus up to 1 s of jitter.
+
+    Without the jitter, N Lambdas throttled in the same second sleep the same
+    1 s, 2 s, 4 s — and slam Bedrock together on every retry, refailing as a
+    synchronised wave (M8 cross-exam item 4).
+    """
+    sleeps: list[float] = []
+    fake = FakeBedrock([throttle(), throttle(), converse_response("ok")])
+    SummarizerClient(bedrock_client=fake, sleep=sleeps.append).summarize("doc")
+
+    assert len(sleeps) == 2
+    assert all(2**i <= s < 2**i + 1 for i, s in enumerate(sleeps))
 
 
 def test_gives_up_after_max_retries() -> None:
