@@ -425,8 +425,11 @@ artifact.
       they measured the same thing:
       - [x] S3 Vectors single-shot · [x] Aurora single-shot (score-fixed) ·
         [x] Aurora HYBRID single-shot
-      - [ ] S3 Vectors agentic · [ ] Aurora agentic · [ ] Aurora HYBRID
-        agentic (all three in flight 2026-08-20)
+      - [x] S3 Vectors agentic · [x] Aurora agentic · [x] Aurora HYBRID
+        agentic — two runs each, 2026-08-20: all land 0.89–0.95
+        session_recall, store- and mode-agnostic; single-shot ∪ agentic
+        = 61/61 (FINDINGS six-run entry). Next measured run: verbatim
+        query as tool call 1, then reformulate.
       - [ ] rerank rows ride the existing `RERANK=--rerank` path when the
         3 req/min Cohere quota makes a full run tolerable (~25 min, FINDINGS
         2026-08-17)
