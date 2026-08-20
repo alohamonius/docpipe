@@ -205,6 +205,11 @@ class EvalReport(BaseModel):
     # 2026-08-16 baseline (written before these fields existed) loadable as-is.
     rerank: bool = False
     rerank_pool: int | None = None
+    # Same self-description contract as ``rerank``: None means the store chose
+    # (every report before this field existed), "SEMANTIC"/"HYBRID" means the
+    # run pinned it — a hybrid score compared against a semantic baseline must
+    # say so on its face.
+    search_type: str | None = None
     knowledge_base_id: str
     question_set: dict[str, Any]
     overall: StratumScore
@@ -241,6 +246,7 @@ def score_question_set(
     min_evidence: int | None = None,
     rerank: bool = False,
     rerank_pool: int = DEFAULT_RERANK_POOL,
+    search_type: str | None = None,
     prefix: str = DEFAULT_PREFIX,
     require_ratified: bool = True,
 ) -> EvalReport:
@@ -272,6 +278,7 @@ def score_question_set(
             min_evidence=min_evidence,
             rerank=rerank,
             rerank_pool=rerank_pool,
+            search_type=search_type,
         )
         keys = [chunk_key_of(p, prefix) for p in passages]
         returned = [key for key in keys if key is not None]
@@ -309,6 +316,7 @@ def score_question_set(
         min_evidence=min_evidence,
         rerank=rerank,
         rerank_pool=rerank_pool if rerank else None,
+        search_type=search_type,
         knowledge_base_id=client.knowledge_base_id,
         question_set={
             "version": question_set.version,

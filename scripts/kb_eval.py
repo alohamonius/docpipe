@@ -68,6 +68,13 @@ def main() -> int:
         help="candidate pool width when --rerank is set "
         "(default sized by the 2026-08-16 miss-rank probe)",
     )
+    parser.add_argument(
+        "--search-type",
+        choices=("SEMANTIC", "HYBRID"),
+        default=None,
+        help="pin overrideSearchType; omit to let the store decide (the pre-Aurora "
+        "baselines were all taken with it omitted)",
+    )
     parser.add_argument("--profile", default=PROFILE)
     parser.add_argument("--region", default=REGION)
     args = parser.parse_args()
@@ -85,6 +92,7 @@ def main() -> int:
             min_evidence=args.min_evidence,
             rerank=args.rerank,
             rerank_pool=args.rerank_pool,
+            search_type=args.search_type,
             require_ratified=not args.dry_run,
         )
     except UnratifiedAnswerKey as refused:
@@ -101,6 +109,8 @@ def main() -> int:
 
     overall = report.overall
     mode = f"rerank(pool={report.rerank_pool})" if report.rerank else "raw"
+    if report.search_type:
+        mode += f"·{report.search_type}"
     print(
         f"n={report.n} k={report.k} [{mode}] · recall@k {overall.recall_at_k} · MRR {overall.mrr} "
         f"· stamp integrity {overall.stamp_integrity} ({overall.stamped}/{overall.passages})"

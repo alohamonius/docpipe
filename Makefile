@@ -49,9 +49,10 @@ KB_ID ?=
 OUT ?= .scratch/kb-eval.json
 DRY ?=
 RERANK ?=
+SEARCH ?=
 kb-eval:
 	uv run --with boto3 python scripts/kb_eval.py \
-		--questions $(QUESTIONS) --kb-id $(KB_ID) --out $(OUT) $(DRY) $(RERANK)
+		--questions $(QUESTIONS) --kb-id $(KB_ID) --out $(OUT) $(DRY) $(RERANK) $(SEARCH)
 
 # Assert the DEPLOYED data source against the chunking contract — the half
 # `test_kb_chunking_contract.py` cannot reach, because it reads Pulumi source

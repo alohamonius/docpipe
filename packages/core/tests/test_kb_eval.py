@@ -346,6 +346,29 @@ def test_a_raw_report_says_so() -> None:
     assert (report.rerank, report.rerank_pool) == (False, None)
 
 
+def test_search_type_reaches_the_client_and_the_report_records_it() -> None:
+    """Same contract as rerank: a HYBRID score must say it is one, or it gets
+    compared against a semantic baseline as if they measured the same store
+    behavior."""
+    fake = FakeAgentRuntime({})
+    client = KnowledgeBaseClient("kb-123", agent_runtime_client=fake)
+    report = score_question_set(client, question_set(), search_type="HYBRID")
+
+    search = fake.calls[0]["retrievalConfiguration"]["vectorSearchConfiguration"]
+    assert search["overrideSearchType"] == "HYBRID"
+    assert report.search_type == "HYBRID"
+
+
+def test_an_unpinned_search_type_stays_off_the_wire_and_reads_none() -> None:
+    fake = FakeAgentRuntime({})
+    client = KnowledgeBaseClient("kb-123", agent_runtime_client=fake)
+    report = score_question_set(client, question_set())
+
+    search = fake.calls[0]["retrievalConfiguration"]["vectorSearchConfiguration"]
+    assert "overrideSearchType" not in search
+    assert report.search_type is None
+
+
 # ── The human gate, enforced ───────────────────────────────────────────────
 
 
