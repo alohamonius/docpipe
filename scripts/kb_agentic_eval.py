@@ -71,16 +71,24 @@ TOOL_CONFIG = {
 }
 
 
+def _retryable(e: ClientError) -> bool:
+    code = e.response["Error"]["Code"]
+    if code in ("ThrottlingException", "ServiceUnavailableException"):
+        return True
+    # An Aurora min-ACU-0 resume surfaces through Retrieve as a
+    # ValidationException with this message (hit live 2026-08-20, killed both
+    # Aurora agentic runs on their first call). Only that one is retryable —
+    # a genuinely invalid request must still fail fast.
+    return code == "ValidationException" and "resuming after being auto-paused" in str(e)
+
+
 def _with_backoff(call, *, retries: int = 4):
     """Throttle-tolerant wrapper; jittered exponential, same shape as llm.py."""
     for attempt in range(retries + 1):
         try:
             return call()
         except ClientError as e:
-            code = e.response["Error"]["Code"]
-            if code not in ("ThrottlingException", "ServiceUnavailableException") or (
-                attempt == retries
-            ):
+            if not _retryable(e) or attempt == retries:
                 raise
             time.sleep(2**attempt + random.random())
     raise RuntimeError("unreachable")

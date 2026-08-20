@@ -1491,3 +1491,52 @@ at min-ACU 0 is compatible with the user-facing retrieval path as measured
 today. Re-verify before load-bearing use (n=1, and AWS resume behavior is
 theirs to change), but every current number says the cost floor and the UX
 can coexist.
+
+**Amended same day, two more samples:** Retrieve against a paused cluster
+does not always absorb the resume — both Aurora agentic runs died on their
+first call with `ValidationException: … The Aurora DB instance … is resuming
+after being auto-paused. Please wait a few seconds and try again.` So the
+cold path is bimodal: fast success (1.32 s, once) or an instantly-retryable
+error (twice). Either way the ~15 s stall was never observed; the caller
+contract is "retry that one ValidationException message", now implemented in
+`kb_agentic_eval.py::_retryable` — and any production caller on an Aurora KB
+needs the same handling (`retrieval.py` does not retry; its callers must).
+
+## 2026-08-20 — agentic rows land: the loop beats every single-shot row, and Aurora agentic hits 0.9508
+
+`scripts/kb_agentic_eval.py`, V3.2 driving `search_kb` (its own reformulations
+and `min_evidence` choices, ≤5 iterations, k=5 per call, rerank OFF), scored
+as **session_recall over the 61 answerable questions** — not MRR, a
+multi-query session has no single ranked list. Reports:
+`docs/baselines/2026-08-20-*-agentic.json`.
+
+| strategy | recall | mean tool calls | p50 wall | tokens/run |
+|---|---|---|---|---|
+| S3 Vectors single-shot | 0.7879 | 1 | 0.96 s | — |
+| Aurora single-shot (fixed) | 0.7879 | 1 | 0.52 s | — |
+| S3 Vectors agentic | **0.8852** | 2.92 | 15.4 s | 485k in / 35k out |
+| Aurora agentic (fixed) | **0.9508** | 2.88 | 13.6 s | 483k in / 36k out |
+
+What holds and what does not:
+
+1. **The agent's multi-query loop is worth ~+0.10–0.16 recall over single-shot
+   retrieval** — reformulation recovers questions where the first phrasing
+   misses. 42–43 of the hits land on tool call 1; the rest are earned by
+   calls 2+, which is the loop paying for itself.
+2. **Do NOT read Aurora-agentic 0.9508 vs S3-agentic 0.8852 as a store
+   effect.** The delta is 4 questions on a single run each at temperature
+   0.3 with model-chosen queries — run-to-run variance is unmeasured, and the
+   single-shot rows say the stores tie on ranking. Claiming a store win here
+   needs repeated runs; until then the honest read is "both agentic rows
+   ≥0.88, both beat single-shot".
+3. **The stateless tax, priced:** ~483k input tokens per 66-question run ≈
+   **$0.36/run ≈ $0.0055/question** at V3.2 rates, and p50 ~14 s vs ~1 s
+   single-shot. The agentic win is not free; it is 14× slower and ~4 converse
+   calls per answer (matches the 2026-08-18 single-question measurement).
+4. **Agentic retrieval does not fix the not-covered gap:** abstention 0.0 and
+   6 forbidden-magnet violations in both runs — wider recall pulls the
+   confabulation magnets in more often, not less. Abstention remains a
+   decision-layer problem (prompting/guardrail), not a retrieval-strategy one.
+
+The Aurora HYBRID agentic run was stopped externally at question 37/66 —
+no report written; rerun pending (~10 min).
