@@ -494,7 +494,12 @@ artifact.
         m-NCU-hour with a capacity floor, so it is a create→measure→destroy
         exhibit, never an always-on store, and it needs its own ruling before
         any resource exists.
-- [ ] **Playground ("tester window"), asked for 2026-08-21:** a local page
+- [x] **Playground ("tester window"), asked for 2026-08-21 — built same day**
+      (`scripts/playground.py` + `.html`, `make playground`). Verified live
+      against both KBs: single-shot and agentic, S3 Vectors and Aurora,
+      HYBRID, rerank, multi-turn history. Two asymmetries it surfaces rather
+      than hides — the agentic path applies **no guardrail** and ignores
+      `rerank` (see FINDINGS 2026-08-21). Original spec: a local page
       (thin script over `docpipe_core`, same pattern as the eval CLIs) — one
       question box; toggles for store, single-shot vs agentic, HYBRID,
       rerank, `min_evidence`; output shows passages with citations + scores,

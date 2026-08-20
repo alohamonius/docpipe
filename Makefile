@@ -1,4 +1,4 @@
-.PHONY: sync fmt lint typecheck test status kb-eval kb-agentic-eval kb-live-check infra-preview infra-up infra-down aurora-bootstrap
+.PHONY: sync fmt lint typecheck test status kb-eval kb-agentic-eval kb-live-check infra-preview infra-up infra-down aurora-bootstrap playground
 
 sync:
 	uv sync --all-packages
@@ -94,6 +94,17 @@ infra-up:
 
 infra-down:
 	cd infra && pulumi destroy
+
+# Local chat playground ("tester window", PLAN Phase 5b) — a browser page over
+# the real chat path: store toggle, single-shot vs agentic, HYBRID, rerank,
+# min_evidence, with passages + scores, the tool-call trace, latency and tokens.
+#
+# Spends real money per ask (retrieve + Converse) and needs the dev stack
+# selected: `pulumi -C infra stack select dev`. Ids resolve from stack output;
+# override with --s3-kb-id / --aurora-kb-id or the matching env vars.
+PORT ?= 8765
+playground:
+	uv run --with boto3 python scripts/playground.py --port $(PORT)
 
 # The SQL half Pulumi cannot do. Between `enableAurora` and `enableAuroraKb`.
 aurora-bootstrap:

@@ -46,7 +46,7 @@ from botocore.exceptions import ClientError
 from pydantic import BaseModel
 
 from docpipe_core.llm import HEALTH_ASSISTANT_SYSTEM, extract_answer_text
-from docpipe_core.retrieval import KnowledgeBaseClient, RetrievedPassage
+from docpipe_core.retrieval import KnowledgeBaseClient, RetrievedPassage, is_retryable
 
 DEFAULT_AGENT_MODEL_ID = "deepseek.v3.2"  # ON_DEMAND + tool use; R1 has neither
 DEFAULT_MAX_ITERATIONS = 5
@@ -79,17 +79,6 @@ _TOOL_CONFIG: dict[str, Any] = {
         }
     ]
 }
-
-_RETRYABLE_CODES = frozenset(
-    {"ThrottlingException", "ServiceUnavailableException", "ModelNotReadyException"}
-)
-
-
-def _is_retryable(error: ClientError) -> bool:
-    code = error.response.get("Error", {}).get("Code", "")
-    if code in _RETRYABLE_CODES:
-        return True
-    return code == "ValidationException" and "resuming after being auto-paused" in str(error)
 
 
 class ToolCall(BaseModel):
@@ -158,7 +147,7 @@ class KbAgent:
             try:
                 return call()
             except ClientError as error:
-                if not _is_retryable(error) or attempt == self._max_retries:
+                if not is_retryable(error) or attempt == self._max_retries:
                     raise
                 self._sleep(2**attempt + self._rng())
         raise RuntimeError("unreachable")

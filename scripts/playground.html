@@ -1,0 +1,256 @@
+<title>docpipe — playground</title>
+<style>
+  :root {
+    --ground: #f6f7f9; --surface: #ffffff; --sunk: #eef0f4;
+    --ink: #171c24; --muted: #5c6675; --faint: #8b95a4;
+    --line: #dde1e8; --hairline: #e7eaf0;
+    --accent: #a8681c; --accent-soft: #f3e6d3;
+    --live: #12684a; --live-soft: #dff0e7;
+    --idle: #6b7686; --err: #a8352a; --err-soft: #f7e2df;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #13171e; --surface: #1a1f28; --sunk: #10141a;
+      --ink: #e5e9f0; --muted: #97a1b1; --faint: #6d7788;
+      --line: #2a313d; --hairline: #232a34;
+      --accent: #e0a45a; --accent-soft: #35291a;
+      --live: #52c894; --live-soft: #16281f;
+      --idle: #7a8496; --err: #f0847a; --err-soft: #2e1c1a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; padding: 24px 20px 120px; }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  h1 { font-size: 17px; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--faint); font-size: 13px; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+
+  .controls {
+    display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px 16px; margin: 16px 0 20px;
+  }
+  .ctl { display: flex; flex-direction: column; gap: 5px; }
+  .ctl label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); }
+  select, input[type=number] {
+    background: var(--sunk); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 7px; padding: 6px 9px; font: inherit; font-size: 13.5px;
+  }
+  .check { flex-direction: row; align-items: center; gap: 7px; padding-bottom: 7px; }
+  .check label { text-transform: none; letter-spacing: 0; font-size: 13.5px; color: var(--ink); }
+  input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; }
+
+  .turn { margin-bottom: 22px; }
+  .bubble {
+    border: 1px solid var(--line); border-radius: 10px; padding: 12px 15px;
+    background: var(--surface); white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .q .bubble { background: var(--accent-soft); border-color: transparent; }
+  .role { font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+          color: var(--faint); margin-bottom: 5px; }
+  .meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 9px; }
+  .tag {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
+    background: var(--sunk); border: 1px solid var(--hairline);
+    border-radius: 999px; padding: 2px 9px; color: var(--muted);
+  }
+  .tag.warn { background: var(--err-soft); border-color: transparent; color: var(--err); }
+  .tag.ok { background: var(--live-soft); border-color: transparent; color: var(--live); }
+
+  details { margin-top: 9px; }
+  summary { cursor: pointer; font-size: 12.5px; color: var(--muted); }
+  summary:hover { color: var(--accent); }
+  .psg { border-left: 2px solid var(--line); padding: 7px 0 7px 12px; margin: 10px 0; }
+  .psg-head { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px; }
+  .cite { color: var(--accent); }
+  .score { color: var(--faint); font-family: ui-monospace, Menlo, monospace; }
+  .psg-body { color: var(--muted); font-size: 13px; margin-top: 5px;
+              max-height: 8.5em; overflow: auto; white-space: pre-wrap; }
+  .trace { background: var(--sunk); border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
+  .trace-q { color: var(--accent); }
+
+  .composer {
+    position: fixed; bottom: 0; left: 0; right: 0; background: var(--ground);
+    border-top: 1px solid var(--line); padding: 12px 20px;
+  }
+  .composer-in { max-width: 940px; margin: 0 auto; display: flex; gap: 10px; }
+  textarea {
+    flex: 1; resize: none; background: var(--surface); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px;
+    font: inherit; min-height: 44px; max-height: 160px;
+  }
+  button {
+    background: var(--accent); color: var(--ground); border: 0; border-radius: 9px;
+    padding: 0 20px; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  .err { background: var(--err-soft); color: var(--err); border-color: transparent; }
+  .nores { color: var(--muted); font-style: italic; }
+  .note { font-size: 12.5px; color: var(--err); margin-top: 6px; }
+  .empty { color: var(--faint); font-size: 13.5px; padding: 30px 0; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>docpipe playground</h1>
+    <span class="sub" id="cfg">loading config…</span>
+  </header>
+
+  <div class="controls">
+    <div class="ctl">
+      <label for="store">store</label>
+      <select id="store">
+        <option value="s3">S3 Vectors</option>
+        <option value="aurora">Aurora pgvector</option>
+      </select>
+    </div>
+    <div class="ctl">
+      <label for="mode">mode</label>
+      <select id="mode">
+        <option value="single">single-shot</option>
+        <option value="agentic">agentic (tool loop)</option>
+      </select>
+    </div>
+    <div class="ctl">
+      <label for="topk">top_k</label>
+      <input type="number" id="topk" value="5" min="1" max="20" style="width:72px">
+    </div>
+    <div class="ctl">
+      <label for="minev">min_evidence</label>
+      <select id="minev">
+        <option value="">none</option>
+        <option value="1">★☆☆ 1</option>
+        <option value="2">★★☆ 2</option>
+        <option value="3">★★★ 3</option>
+      </select>
+    </div>
+    <div class="ctl check"><input type="checkbox" id="hybrid"><label for="hybrid">HYBRID</label></div>
+    <div class="ctl check"><input type="checkbox" id="rerank" checked><label for="rerank">rerank</label></div>
+    <div class="ctl check"><input type="checkbox" id="reset"><label for="reset">new thread each ask</label></div>
+  </div>
+
+  <div id="log"><div class="empty">Ask something grounded in the health.studio corpus — try
+    <em>"what causes central sensitization?"</em> or <em>"which muscles refer pain to the shoulder?"</em></div></div>
+</div>
+
+<div class="composer">
+  <div class="composer-in">
+    <textarea id="q" placeholder="Ask a question…  (Enter to send, Shift+Enter for newline)"></textarea>
+    <button id="send">Ask</button>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const log = $('log');
+let history = [];
+
+fetch('/config').then(r => r.json()).then(c => {
+  $('cfg').textContent =
+    `chat ${c.chat_model_id} · agent ${c.agent_model_id}` +
+    (c.guardrail_id ? ` · guardrail ${c.guardrail_id}` : ' · NO GUARDRAIL') +
+    ` · S3 ${c.s3_kb_id || '—'} · Aurora ${c.aurora_kb_id || '—'}`;
+  if (!c.aurora_kb_id) $('store').querySelector('[value=aurora]').disabled = true;
+}).catch(() => { $('cfg').textContent = 'config unavailable'; });
+
+const esc = s => (s ?? '').replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+
+function el(html) { const d = document.createElement('div'); d.innerHTML = html; return d.firstElementChild; }
+
+function addTurn(role, text, cls) {
+  const t = el(`<div class="turn ${cls||''}"><div class="role">${role}</div>
+    <div class="bubble">${esc(text)}</div></div>`);
+  log.append(t); window.scrollTo(0, document.body.scrollHeight); return t;
+}
+
+function renderPassages(ps) {
+  if (!ps || !ps.length) return '';
+  const rows = ps.map(p => `<div class="psg">
+      <div class="psg-head"><span class="cite">${esc(p.citation)}</span>
+        <span class="score">${p.score == null ? '—' : p.score.toFixed(4)}</span></div>
+      <div class="psg-body">${esc(p.text)}</div></div>`).join('');
+  return `<details><summary>${ps.length} passage${ps.length > 1 ? 's' : ''}</summary>${rows}</details>`;
+}
+
+function renderTrace(calls) {
+  if (!calls || !calls.length) return '';
+  const rows = calls.map((c, i) => `<div class="trace">
+      <div class="mono">${i + 1}. <span class="trace-q">search_kb("${esc(c.query)}")</span>${
+        c.min_evidence != null ? ` min_evidence=${c.min_evidence}` : ''} → ${c.passages.length} passages</div>
+      ${renderPassages(c.passages)}</div>`).join('');
+  return `<details open><summary>tool trace — ${calls.length} call${calls.length > 1 ? 's' : ''}</summary>${rows}</details>`;
+}
+
+async function ask() {
+  const question = $('q').value.trim();
+  if (!question) return;
+  if ($('reset').checked) history = [];
+  $('q').value = ''; $('send').disabled = true;
+  addTurn('you', question, 'q');
+  const pending = addTurn('thinking…', '', '');
+
+  const body = {
+    question, history,
+    store: $('store').value, mode: $('mode').value,
+    top_k: +$('topk').value, hybrid: $('hybrid').checked, rerank: $('rerank').checked,
+    min_evidence: $('minev').value === '' ? null : +$('minev').value,
+  };
+
+  try {
+    const r = await fetch('/ask', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    pending.remove();
+    if (d.error) { addTurn('error', d.error, '').querySelector('.bubble').classList.add('err'); return; }
+
+    const tags = [
+      `<span class="tag">${d.store}</span>`,
+      `<span class="tag">${d.mode}</span>`,
+      `<span class="tag">${d.latency_ms} ms</span>`,
+      `<span class="tag">${d.input_tokens}→${d.output_tokens} tok</span>`,
+    ];
+    if (d.guardrail_intervened) tags.push('<span class="tag warn">guardrail intervened</span>');
+    if (d.hit_iteration_bound) tags.push('<span class="tag warn">hit iteration bound</span>');
+    if (d.stop_reason) tags.push(`<span class="tag ok">${d.stop_reason}</span>`);
+
+    const t = addTurn('assistant', d.answer, '');
+    if (!d.answer) {
+      // agent.py only assigns `answer` when the model stops asking for tools,
+      // so an exhausted loop returns "". A blank bubble reads as a bug; say why.
+      t.querySelector('.bubble').innerHTML = '<span class="nores">' + (d.hit_iteration_bound
+        ? `No answer — the agent used all its iterations on searching (${
+            d.tool_calls.length} calls) and never composed a reply. Widen top_k, or ask something narrower.`
+        : 'The model returned no text.') + '</span>';
+    }
+    const noteHtml = (d.notes || []).map(n => `<div class="note">${esc(n)}</div>`).join('');
+    t.insertAdjacentHTML('beforeend',
+      `<div class="meta">${tags.join('')}</div>${noteHtml}${renderTrace(d.tool_calls)}${
+        d.mode === 'single' ? renderPassages(d.passages) : ''}`);
+
+    if (d.answer) history.push({role: 'user', content: question}, {role: 'assistant', content: d.answer});
+  } catch (e) {
+    pending.remove();
+    addTurn('error', String(e), '').querySelector('.bubble').classList.add('err');
+  } finally {
+    $('send').disabled = false; $('q').focus();
+  }
+}
+
+$('send').onclick = ask;
+$('q').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(); }
+});
+$('store').addEventListener('change', e => {
+  // S3 Vectors rejects HYBRID outright (FINDINGS 2026-08-20) — don't offer it.
+  const s3 = e.target.value === 's3';
+  $('hybrid').disabled = s3;
+  if (s3) $('hybrid').checked = false;
+});
+$('store').dispatchEvent(new Event('change'));
+$('q').focus();
+</script>

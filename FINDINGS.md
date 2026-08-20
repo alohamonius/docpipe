@@ -1706,3 +1706,64 @@ cost" stopped being true the moment Aurora came on. `min_capacity = 0` pauses
 ACU billing but not storage or backup — **~$0.12/mo**, not $0. (Cost Explorer
 month-to-date still rounds to $0 across every service, but the cluster is two
 days old and CE lags; the design figure is the one to plan against.)
+
+## 2026-08-21 — building the playground found two live defects: single-shot never retried Aurora's auto-pause, and the agentic path applies no guardrail
+
+The playground (PLAN Phase 5b) is a thin shell, so everything below was already
+true of the shipping code — it just had no operator-facing surface to show it.
+
+**1. `retrieval.py` had no retry at all, so every Aurora cold start failed.**
+Reproduced on the first real Aurora ask:
+
+```
+ValidationException: ... The Aurora DB instance db-L3DM7APXX43HCTKXNZMEBRRQCQ
+is resuming after being auto-paused. Please wait a few seconds and try again.
+```
+
+The trap is that this arrives as a **`ValidationException`** — *no retryable
+error code* — so any handler matching on codes alone misses it. `agent.py:92`
+already had the string match, added when the agentic eval hit it; `retrieval.py`
+had nothing. Net effect: **on Aurora the agentic path survived a cold start and
+the single-shot path did not.** And since the cluster runs `min_capacity = 0` by
+design, "cold" is not an edge case — it is the first question of every session.
+Phase 3's Lambda is the same single-shot shape, so it would have shipped with it.
+
+Fixed by moving the predicate to `retrieval.py` as `is_retryable` (the layer
+that actually touches the paused database; `agent.py` already imports from it,
+so the direction is right) and giving `KnowledgeBaseClient.retrieve` the same
+jittered backoff `agent.py` uses. `agent.py` now imports the one definition.
+Covered by three tests in `test_retrieval.py`, including that a
+*non*-resume `ValidationException` still raises on the first attempt rather
+than burning four retries on a genuine bug.
+
+**2. `KbAgent` applies no guardrail — `agent.py` contains zero references to
+one.** `llm.py:122-126` passes `guardrailConfig` on every Converse call, and its
+own comment states the stakes: *"absent this block the Bedrock Guardrail in
+`infra/components/safety.py` is decoration, and the non-diagnostic stance rests
+entirely on a system prompt that prompt injection can argue with."* That is
+exactly the agentic path's situation today — on health content, and on the path
+PLAN says the agent ships on in Phase 3.
+
+**Deliberately not fixed in the same pass**, because the fix is not free: adding
+a guardrail to `KbAgent` changes what the model receives, so it would invalidate
+the six agentic runs from 2026-08-20 that the Phase 5b matrix rests on. Whether
+to re-measure or to ship guardrailed-and-unmeasured is a ruling, not a lint fix.
+Flagged in the playground UI per-answer so nobody demos the agentic path
+believing the guardrail is on.
+
+**3. Minor, same family:** `agent.py:217` hardcodes `rerank=False` on its
+tool-side retrieve, so `rerank` is a single-shot-only control. The playground
+says so rather than showing a toggle that does nothing.
+
+**Also observed, not a defect:** the agent hit its 5-iteration bound on *"which
+muscles refer pain to the shoulder?"* — five reformulated searches, 10,095 input
+tokens, and **an empty answer**, because `agent.py` only assigns `answer` when
+the model stops asking for tools. `AgentSession.hit_iteration_bound` reports it
+honestly; the failure mode is that a caller rendering `.answer` blindly shows a
+blank. Worth knowing before Phase 3 puts this behind an API.
+
+Verified working end-to-end while finding the above: single-shot on both stores,
+agentic, HYBRID on Aurora (scores correctly descending — the distance-inversion
+sort is rightly skipped there), multi-turn history resolving a pronoun across
+turns, guardrail applied and reporting `guardrail_intervened` on the single-shot
+path. Warm latency ~5 s single-shot, ~18 s for a five-call agentic loop.
