@@ -1,5 +1,6 @@
 from typing import Any
 
+import pytest
 from docpipe_core.llm import HEALTH_ASSISTANT_SYSTEM, ChatClient
 from docpipe_core.models import ChatMessage
 from docpipe_core.retrieval import (
@@ -272,3 +273,27 @@ def test_rerank_composes_with_the_evidence_floor() -> None:
     search = fake.calls[0]["retrievalConfiguration"]["vectorSearchConfiguration"]
     assert "filter" in search
     assert "rerankingConfiguration" in search
+
+
+def test_search_type_hybrid_lands_in_the_request() -> None:
+    """``overrideSearchType`` rides inside ``vectorSearchConfiguration``.
+
+    The default (``None``) is pinned by
+    ``test_rerank_off_sends_the_pre_rerank_request_shape``'s exact-equality
+    assert — no key unless asked — so this only has to prove the opt-in.
+    """
+    fake = FakeAgentRuntime([])
+    KnowledgeBaseClient("kb-123", agent_runtime_client=fake).retrieve(
+        "q", rerank=False, search_type="HYBRID"
+    )
+
+    search = fake.calls[0]["retrievalConfiguration"]["vectorSearchConfiguration"]
+    assert search["overrideSearchType"] == "HYBRID"
+
+
+def test_search_type_typo_fails_before_any_request() -> None:
+    """A bad value raises locally instead of burning an AWS round-trip."""
+    fake = FakeAgentRuntime([])
+    with pytest.raises(ValueError, match="search_type"):
+        KnowledgeBaseClient("kb-123", agent_runtime_client=fake).retrieve("q", search_type="hybrid")
+    assert fake.calls == []

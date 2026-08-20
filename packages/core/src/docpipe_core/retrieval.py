@@ -93,6 +93,7 @@ class KnowledgeBaseClient:
         min_evidence: int | None = None,
         rerank: bool = True,
         rerank_pool: int = DEFAULT_RERANK_POOL,
+        search_type: str | None = None,
     ) -> list[RetrievedPassage]:
         """Retrieve passages, optionally refusing anything below an evidence floor.
 
@@ -164,8 +165,24 @@ class KnowledgeBaseClient:
         A chunk with no ``safetyCritical`` attribute does not match the second
         arm, so nothing outside health.studio's corpus gains an exemption by
         accident.
+
+        ``search_type`` maps to ``overrideSearchType``: ``"HYBRID"`` asks the
+        store to blend vector similarity with full-text keyword match,
+        ``"SEMANTIC"`` pins vector-only, and ``None`` — the default — sends
+        nothing, so the store decides and every pre-existing call stays
+        byte-identical. Two facts gate its use (PLAN.md): Aurora provisions a
+        GIN ``to_tsvector`` index for exactly this, and whether S3 Vectors
+        accepts HYBRID at all is unverified. The knob exists to *measure*
+        hybrid per store, not to flip it blind — an unsupported value fails
+        here, before a request is spent on it.
         """
         search: dict[str, Any] = {"numberOfResults": max(rerank_pool, top_k) if rerank else top_k}
+        if search_type is not None:
+            if search_type not in ("SEMANTIC", "HYBRID"):
+                raise ValueError(
+                    f"search_type must be 'SEMANTIC', 'HYBRID' or None, got {search_type!r}"
+                )
+            search["overrideSearchType"] = search_type
         if min_evidence is not None:
             search["filter"] = {
                 "orAll": [
