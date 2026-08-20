@@ -393,15 +393,21 @@ against Aurora pgvector on the same corpus and golden set — here's retrieval
 latency, recall, cost, and where each wins."** The measured decision *is* the
 artifact.
 
-- [ ] Both KBs live over the same `corpus/` prefix; identical Titan v2 @ 1024
-- [ ] Golden set: ~30–50 `question → expected-passage(s)` pairs from the corpus
-- [ ] Measure per store: retrieval **latency** (p50/p95, incl. Aurora cold-start
-      after auto-pause), **recall@k / MRR** on the golden set, **$ cost** (at rest
-      + per 1k queries)
+- [x] Both KBs live over the same `corpus/` prefix; identical Titan v2 @ 1024
+      — live 2026-08-20, both verified holding the 496-chunk corpus
+- [x] Golden set: the ratified 66-question key (v2, 2026-08-17) serves this
+- [x] **recall@k / MRR per store — measured 2026-08-20** (FINDINGS entry,
+      reports in `docs/baselines/2026-08-20-*`): recall 0.7879 identical on
+      both; MRR — S3 Vectors 0.5634, Aurora semantic **0.3172** (the anomaly
+      to chase), Aurora HYBRID 0.5331; S3 Vectors rejects HYBRID outright.
+      Latency (p50/p95, cold-start) and the $ cost column remain.
 - [ ] **The graph only Aurora can produce: sweep `hnsw.ef_search`** (10 / 40 /
       100 / 200 — a session-level `SET`, no rebuild) and plot recall@4 against
       p95 latency. S3 Vectors can only ever be one opaque point on that curve.
       This is the strongest single exhibit in the whole project.
+      **Caveat found 2026-08-20:** Bedrock issues its own SQL sessions, so the
+      sweep cannot reach the shipped Retrieve path — it needs a direct-SQL
+      harness, and the two curves must be labeled as different instruments.
 - [ ] Also cheap and only possible in Aurora: near-duplicate detection across the
       corpus (`WHERE a.embedding <=> b.embedding < 0.15`) — answers "are my 383
       chunks actually distinct?", a question the Retrieve API cannot express.

@@ -1367,10 +1367,51 @@ before investigating. `SELECT count(*)` over the Data API confirms **496 rows**
 in `bedrock_integration.bedrock_kb` — per the standing rule, the store was
 verified directly, not trusted from job stats.
 
-The number that matters for Phase 5b: the source bucket holds the **496-chunk
+~~The number that matters for Phase 5b: the source bucket holds the **496-chunk
 corpus** (the health.studio re-sync already landed), so Aurora indexed 496 —
 but the S3 Vectors KB (`JDNNGSU1JT`) still holds **383 vectors** from the
 pre-06 corpus and its 0.7879 baseline was measured on those. The two stores
-are NOT currently comparable. Before any cross-store benchmark either
-re-ingest the S3 Vectors KB on the 496 corpus and re-baseline it, or the
-comparison measures the corpus delta, not the store.
+are NOT currently comparable.~~ **RETRACTED 2026-08-20, same day:** the 383
+figure was an inference from the 2026-08-16 runbook, not a measurement. A
+fresh ingestion job on `JDNNGSU1JT` returned 0 new / 0 modified / 0 failed,
+and paginated `list_vectors` counts **496** — the S3 Vectors KB had already
+been re-ingested on the 496 corpus before today. The stores were comparable
+all along; the benchmark ran the same day (next entry).
+
+## 2026-08-20 — first cross-store benchmark: same recall, Aurora semantic ranks far worse, hybrid buys the rank back
+
+Four runs, one day, both KBs holding the byte-identical 496-chunk corpus,
+answer key v2 (66 questions, ratified 2026-08-17, every expected and forbidden
+key verified present in the bucket before spending a call). k=5, no rerank,
+`min_evidence: null`. Reports committed under `docs/baselines/2026-08-20-*`.
+
+| run | recall@5 | MRR | note |
+|---|---|---|---|
+| S3 Vectors, raw | **0.7879** | **0.5634** | vs 0.7879 / 0.5538 on the 383 corpus — the corpus change was recall-neutral and rank-neutral on this key |
+| Aurora, raw (semantic) | **0.7879** | **0.3172** | identical recall, **MRR nearly halved**, degradation uniform across strata (prose 0.8058 → 0.3993) |
+| Aurora, HYBRID | 0.7727 | 0.5331 | recovers most of the rank deficit for −0.015 recall (one graph-chain miss) |
+| S3 Vectors, HYBRID | — | — | **rejected by the API**: "HYBRID search type is not supported for search operation on index JDNNGSU1JT" |
+
+What this says:
+
+1. **Recall is a corpus property here, not a store property** — 0.7879 on both
+   stores, and unchanged from the 383-chunk baseline. The 0.7879 → ~0.96 gap
+   still belongs to the reranker/hybrid layer, not to either index.
+2. **Aurora's semantic-only ranking is the anomaly worth chasing.** Same
+   embeddings, same cosine metric, same top-5 membership, systematically worse
+   ordering. Suspects: Bedrock's score normalisation on the RDS path, or HNSW
+   `ef_search` at its default in Bedrock's session — note Bedrock issues the
+   SQL, so `hnsw.ef_search` being a session knob means *we cannot set it* for
+   Bedrock-issued queries; the PLAN 5b sweep as written only applies to a
+   direct-SQL harness, not to the shipped Retrieve path.
+3. **Hybrid is real and Aurora-exclusive, by measurement on both ends** — the
+   GIN `to_tsvector` index earns its keep (MRR +0.216 over Aurora semantic),
+   and S3 Vectors refuses the mode outright, settling the "still unverified"
+   note in `retrieval.py`'s docstring.
+4. Ranking champion today: S3 Vectors raw (MRR 0.5634), with Aurora HYBRID
+   0.03 behind. The decision layer (rerank over widened pool, ~0.96 measured
+   ceiling) sits above both and was not in these runs.
+
+All four runs exit 1 by design: the not-covered stratum still returns
+confabulation magnets (abstention 0.0, n=5) — unchanged from the known gap-04
+class, and hoisted `forbidden_violations` is doing its job.
