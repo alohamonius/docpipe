@@ -99,6 +99,16 @@ class AuroraKnowledgeBase(pulumi.ComponentResource):
                             ],
                         },
                         {
+                            # Bedrock validates the storage config at
+                            # CreateKnowledgeBase by describing the cluster as
+                            # this role — without it the create 403s (hit on
+                            # first apply, 2026-08-20).
+                            "Sid": "DescribeClusterForValidation",
+                            "Effect": "Allow",
+                            "Action": "rds:DescribeDBClusters",
+                            "Resource": cluster_arn,
+                        },
+                        {
                             # This is the connection path. No socket, no VPC
                             # attachment, no NAT — Bedrock calls the Data API.
                             "Sid": "QueryClusterOverDataApi",

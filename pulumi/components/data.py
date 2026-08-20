@@ -48,7 +48,10 @@ class Data(pulumi.ComponentResource):
         aurora_min_acu: float = 0,
         aurora_max_acu: float = 1,
         # 16.1+ required by Bedrock KB (pgvector >= 0.5.0 ships from 16.1).
-        aurora_engine_version: str = "16.6",
+        # RDS retires patch versions: 16.6 vanished from us-east-1 and failed
+        # the first apply (2026-08-20); pin whatever `describe-db-engine-versions`
+        # currently lists when this errors again.
+        aurora_engine_version: str = "16.14",
         aurora_database_name: str = "docpipe",
         aurora_bedrock_username: str = "bedrock_user",
         opts: pulumi.ResourceOptions | None = None,
@@ -157,7 +160,9 @@ class Data(pulumi.ComponentResource):
             sg = aws.ec2.SecurityGroup(
                 f"{prefix}-aurora",
                 name=f"{prefix}-aurora",
-                description="Aurora — Postgres reachable only from inside the VPC",
+                # ASCII only: EC2 rejects non-ASCII in GroupDescription (an
+                # em-dash here failed the first apply, 2026-08-20).
+                description="Aurora - Postgres reachable only from inside the VPC",
                 vpc_id=vpc_id,
                 ingress=[
                     {

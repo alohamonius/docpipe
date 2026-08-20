@@ -95,10 +95,15 @@ def ddl(username: str) -> list[tuple[str, str]]:
             f"""CREATE INDEX IF NOT EXISTS {TABLE}_custom_metadata_idx
                 ON {qualified} USING gin (custom_metadata);""",
         ),
+        # One statement per entry: the Data API rejects multi-statement SQL
+        # ("Multistatements aren't supported" — hit on first run, 2026-08-20).
         (
-            "grants",
-            f"""GRANT USAGE ON SCHEMA {SCHEMA} TO {username};
-                GRANT SELECT, INSERT, UPDATE, DELETE ON {qualified} TO {username};""",
+            "grant: schema usage",
+            f"GRANT USAGE ON SCHEMA {SCHEMA} TO {username};",
+        ),
+        (
+            "grant: table DML",
+            f"GRANT SELECT, INSERT, UPDATE, DELETE ON {qualified} TO {username};",
         ),
     ]
 

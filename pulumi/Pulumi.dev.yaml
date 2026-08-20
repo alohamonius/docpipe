@@ -14,8 +14,8 @@ config:
   #
   # min_acu=0 when on, so ACU billing pauses when idle (storage/backup do not,
   # ≈$0.12/mo). The ~15s resume on the first query is accepted — 2026-08-14.
-  docpipe:enableAurora: "false"
-  docpipe:enableAuroraKb: "false"
+  docpipe:enableAurora: "true"
+  docpipe:enableAuroraKb: "true"
   # Two models, both DeepSeek. Summary = R1 (INFERENCE_PROFILE-only, no tool
   # use); chat = v3.2 (ON_DEMAND, tool use). chatModelId is stated explicitly
   # rather than left to the code default in __main__.py:21 — one config value

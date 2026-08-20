@@ -1220,3 +1220,139 @@ Result: **66 calls, 0 throttles, 1,432 s**. The `Rerank` requests-per-second quo
 Budget a reranked eval as ~25 minutes and ~$0.13, not as "one eval like the
 baseline". A pass that budgets it the other way times out and reports that model
 access is broken, when it is not.
+
+## 2026-08-18 — V3.2 drives a multi-search tool loop unprompted: 3 retrievals, self-set evidence floor, end_turn at call 4
+
+The 2026-08 smoke test proved one `tool_use` round; this ran the whole loop.
+A hand-written Converse loop (`.scratch/converse-tool-loop.py` — no Strands,
+every message visible) with a single `search_kb(query, min_evidence)` tool,
+`deepseek.v3.2`, live KB `JDNNGSU1JT`, question "What connects the shoulder to
+the neck, and how strong is the evidence?":
+
+- **The model reformulated its own queries.** Three `tool_use` rounds with
+  three distinct phrasings ("shoulder neck anatomical connections muscles
+  ligaments" → "…trapezius muscles anatomy" → "cervical spine shoulder
+  connection anatomy"), each pulling a *different* body-graph edge chunk.
+  Multi-retrieval — the concrete thing an agent buys over the fixed
+  `ChatClient.reply` pipeline — happened with zero prompting.
+- **It set `min_evidence=1` on every call by itself**, from a one-line hint in
+  the tool description. The retrieval floor works as a per-call model decision,
+  which is the design argument for exposing it as a tool parameter.
+- **The stateless tax, measured:** input tokens per call 460 → 1,221 → 1,976 →
+  2,750; one question = 4 converse calls, 6.4k input / 0.65k output tokens
+  (~$0.005 at V3.2's $0.62/$1.85 per M). Budget agent questions at ~4× the
+  single-shot cost.
+- **`end_turn` arrived at call 4 of a `MAX_ITERATIONS=5` bound.** The bound is
+  not decorative; a tool-happier model or a wider tool surface hits it.
+- Rerank stayed OFF in the tool: three tool calls in one question would eat the
+  3 req/min account-level Cohere quota (see 2026-08-17 entry) on its own.
+
+## 2026-08-19 — corpus is now 496 chunks; 72 are bibliography-only and filterable
+
+Cross-ref: measured in health.studio (owner of the exporter), recorded at
+`specs/040-chunk-shape/findings.md` there. What matters on the docpipe side:
+the heading split ran (kb-data-status item 2 is done — 41 parents → 154 pieces,
+79 still over the 1024-token ceiling), and it minted the `### Sources` sections
+as 72 standalone chunks. Every sidecar tags them `section: "Sources"`, so
+retrieval can exclude them with a metadata filter today — no rebuild needed —
+or ingestion can skip them. The 383-chunk figures in `docs/kb-data-status.md`
+are stale. Nerves backlog for future sessions:
+health.studio `specs/041-nerve-registry/bugs.md`.
+
+## 2026-08-19 — the case for Aurora consolidated: three product features, not one benchmark
+
+What accumulated today, recorded so the re-ruling moment has it in one place.
+The 2026-08-16 ruling (ship on S3 Vectors; Aurora + benchmark deferred) stands
+until the human moves it — nothing below is applied. **Moved the same day:**
+the human re-ruled Aurora must-have (PLAN.md 2026-08-19 revision), and the
+three applies ran 2026-08-20 — see that entry below. This paragraph is the
+before-picture, kept as written.
+
+Aurora-exclusive, cannot be had on S3 Vectors at any price:
+
+1. **Hybrid search.** The GIN `to_tsvector` index is already in
+   `scripts/aurora_bootstrap.py`; the only code gap is `overrideSearchType`
+   missing from `retrieval.py` (~1 param). The corpus is unusually entity-heavy
+   (Latin muscle names, nerve ids) — the lexical channel targets exactly the
+   dense-retrieval misses. Check the baseline's miss-rank probe for the lexical
+   signature before crediting this.
+2. **The bibliography move** (kb-data-status Decision 2): ~12 KB bibliographies
+   fit Aurora's GIN-indexed jsonb, and text moved to metadata leaves BOTH
+   channels — semantic and lexical. Parked with Aurora by the ruling.
+3. **chatCompacts as searchable memory**: a separate app table (never
+   `bedrock_integration.bedrock_kb`, never the shared KB — per-user data stays
+   out of the public corpus), pgvector + tsvector + userId column, queried over
+   the Data API directly. DynamoDB stays source of truth for chat state; the
+   ~15s resume must never sit in the first-message path.
+4. **Rerank-quota relief.** Cohere is 3 req/min account-wide and OFF in the
+   agentic path. If hybrid closes part of the 0.7879 → ~0.96 gap for free, the
+   dependency shrinks where it hurts most.
+
+Cost re-estimate (prices verified 2026-08-13, PLAN.md): floor ~$0.12–0.50/mo
+paused; realistic $5–15/mo with pre-warm keeping the cluster awake through
+active hours; $44/mo only if something keeps it awake 24/7 — a bug, not a plan.
+
+The counterweight, so this entry is not a sales pitch: **shipping does not need
+Aurora.** Rerank over a widened pool already measures ~0.96 on the answerable
+set, S3-only. Aurora is must-have on the roadmap (it is the locked "intended
+primary"); whether it jumps ahead of shipping is a time allocation, and the
+ruling that decides it should cite this entry either way.
+
+## 2026-08-20 — the three Aurora applies ran; four first-run bugs, all four now fixed in code
+
+PLAN.md's warning ("the Aurora branch in `data.py` has never executed — treat
+the first apply as a test") paid out four times — one bug per run, each masking
+the next:
+
+1. **EC2 rejects non-ASCII in a security-group description.** The em-dash in
+   `"Aurora — Postgres reachable only from inside the VPC"` fails
+   `CreateSecurityGroup` with `InvalidParameterValue: … Character sets beyond
+   ASCII are not supported`. Tags take Unicode; `GroupDescription` does not.
+   This repo's prose style (em-dashes everywhere) makes it a live hazard in any
+   user-visible AWS string — fixed to an ASCII hyphen in `data.py`.
+2. **RDS retires patch versions out from under a pin.** `engine_version:
+   "16.6"` — valid when written 2026-08-14 — now fails `CreateDBCluster` with
+   `InvalidParameterCombination: Cannot find version 16.6 for
+   aurora-postgresql`. `describe-db-engine-versions` lists 16.8–16.14 for
+   us-east-1 today; repinned to 16.14. A pinned minor is a time bomb with a
+   ~1-year fuse: check the live list, not the docs, when this recurs.
+3. **The RDS Data API rejects multi-statement SQL.** `aurora_bootstrap.py`'s
+   final "grants" entry packed two `GRANT`s into one `ExecuteStatement` →
+   `ValidationException: Multistatements aren't supported`. Everything before
+   it (role, secret, extension, table, all three indexes) had already applied —
+   idempotency is what made the re-run after the split safe. One statement per
+   Data API call, always.
+4. **Bedrock validates the Aurora KB by calling `rds:DescribeDBClusters` as
+   the KB role.** `CreateKnowledgeBase` failed 403 after ~135 s with exactly
+   that action named. It is not in any of the AWS-documented rds-data actions
+   the role obviously needs — added as its own statement in `kb_aurora.py`.
+   The 135 s before the failure is the cluster resuming from auto-pause:
+   Bedrock's validation call itself pays the min-ACU=0 resume.
+
+Also learned operationally: an interrupted `pulumi up` (Ctrl-C mid-update)
+leaves the S3-backend lock held by a dead pid; the next `up` refuses with
+"the stack is currently locked". `pulumi cancel` clears it — verify the pid is
+dead first (`ps -p <pid>`), because cancel on a *live* update corrupts state.
+
+One more state-surgery lesson: a `pulumi up | head`-style pipe kills Pulumi
+mid-update when the pipe closes (SIGPIPE reads as KeyboardInterrupt in the
+language host). One such kill landed between CreateDBInstance and the state
+write, leaving the instance live in AWS but absent from state → the retry
+failed `DBInstanceAlreadyExists`. Repair that worked: confirm in AWS the
+resource is healthy, `pulumi refresh --clear-pending-creates --yes`, then
+`pulumi import aws:rds/clusterInstance:ClusterInstance docpipe-dev-aurora-1
+docpipe-dev-aurora-1 --parent docpipe-dev=<Data component URN> --protect=false`
+— after which `pulumi preview` showed 58 unchanged. Never pipe an apply
+through `head`; redirect to a file and read the file.
+
+End state, verified live 2026-08-20: cluster `docpipe-dev-aurora` ACTIVE
+(16.14, Serverless v2 min 0 / max 1 ACU, auto-pause 300 s, Data API on),
+`bedrock_integration.bedrock_kb` + 3 indexes + `bedrock_user` in place, and
+the second KB is real: **`A44CISMRAM`** (ACTIVE, storage RDS), data source
+**`H8PN3JBXPN`**, exported as `aurora_knowledge_base_id` /
+`aurora_kb_data_source_id`. The benchmark's second store exists; next is the
+sync fan-out + ingest, then the Phase 5b measurements.
+
+Budget first applies of never-run branches as N short failing runs, not one
+long one — the same one-error-per-apply cadence as the 2026-08-13 first
+deploy.

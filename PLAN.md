@@ -114,6 +114,16 @@ Execution order, and what each step is actually blocked on:
 > without a rebuild. conn-04/chain-03 phrasing fixes are content-side in
 > health.studio, unblocked anytime.
 
+> **Revised 2026-08-19 (human ruling): Aurora is must-have — unparked.** The
+> 2026-08-16 deferral inverts: the three Aurora applies, `search_type` in
+> `retrieval.py`, sync fan-out to both KBs, and the hybrid/benchmark
+> measurement rejoin the active path. The accumulated case (hybrid, the
+> bibliography move, chatCompacts-as-memory, rerank-quota relief, cost
+> re-estimate) is inventoried in FINDINGS.md 2026-08-19. Same ruling: worker
+> compute leans **Lambda** (not locked); the nerve-registry rulings (cutaneous
+> contract, Population B denominator) and coverage priority are resolved in the
+> platform repo, not here. The sources-chunks handling decision stays open.
+
 Phases are deliberately **not renumbered**: FINDINGS.md and `docs/interview/`
 reference them by number. Only the execution order changed.
 
@@ -191,7 +201,7 @@ guardrail `pjpeeu9hf68a`, invocation logging active. Gotchas in FINDINGS.md.
         `aurora_cluster_endpoint`, `aurora_database_name`,
         `aurora_master_secret_arn`, `aurora_bedrock_secret_arn` and
         `aurora_bedrock_username`, all exported from `__main__.py`.
-- [ ] **Apply it — three ordered steps, and the order is not negotiable.**
+- [x] **Apply it — three ordered steps, and the order is not negotiable.**
       Bedrock validates the DB connection at `CreateKnowledgeBase`, so the table
       and role must exist before the KB is created. Hence two flags:
       1. `enableAurora: true` → `pulumi up` (cluster + Data API + empty secret)
@@ -199,10 +209,13 @@ guardrail `pjpeeu9hf68a`, invocation logging active. Gotchas in FINDINGS.md.
       3. `enableAuroraKb: true` → `pulumi up` (the KB attaches)
       `__main__.py` raises if step 3 is attempted without step 1. Nothing
       enforces step 2 — that failure surfaces as a KB create error.
-- [ ] **Untested against AWS.** The Aurora branch in `data.py` has **never
-      executed** (`describe_db_clusters` → 0 clusters, verified 2026-08-14), so
-      the first `up` runs it for the first time. `kb_aurora.py` has never been
-      previewed. Treat the first apply as a test, not a deployment.
+      **Done 2026-08-20**: cluster `docpipe-dev-aurora` (16.14, min 0 / max 1
+      ACU), KB **`A44CISMRAM`** ACTIVE, ds `H8PN3JBXPN`.
+- [x] **Untested against AWS** — tested 2026-08-20, and the prediction held:
+      four first-run bugs (non-ASCII SG description, retired 16.6 pin, Data API
+      multistatement, missing `rds:DescribeDBClusters` on the KB role), one per
+      apply, all fixed in code. FINDINGS.md 2026-08-20 has the evidence and the
+      state-surgery playbook.
 - [ ] **Untracked resource:** Managed KB `XHWRWMWMIQ`
       (`knowledge-base-quick-start-nxl5n`, created 2026-08-04 via console Quick
       Create) is live and outside Pulumi state — `make infra-down` will not
