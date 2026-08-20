@@ -1,4 +1,4 @@
-.PHONY: sync fmt lint typecheck test status kb-eval kb-live-check infra-preview infra-up infra-down aurora-bootstrap
+.PHONY: sync fmt lint typecheck test status kb-eval kb-agentic-eval kb-live-check infra-preview infra-up infra-down aurora-bootstrap
 
 sync:
 	uv sync --all-packages
@@ -96,3 +96,7 @@ infra-down:
 # The SQL half Pulumi cannot do. Between `enableAurora` and `enableAuroraKb`.
 aurora-bootstrap:
 	uv run --with boto3 python scripts/aurora_bootstrap.py
+
+kb-agentic-eval:
+	uv run --with boto3 python scripts/kb_agentic_eval.py \
+		--questions $(QUESTIONS) --kb-id $(KB_ID) --out $(OUT) $(DRY) $(SEARCH) $(FLAGS)

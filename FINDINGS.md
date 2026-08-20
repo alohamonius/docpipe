@@ -1467,3 +1467,27 @@ Aurora is ~2× faster warm at both percentiles. S3 Vectors also threw one
 matter for a fleet. Cold start (>5 min idle, min-ACU 0 resume) measured
 separately below. Instrument: `.scratch/kb_latency.py` (gitignored; promote
 to `scripts/` if it should run in a gate).
+
+## 2026-08-20 — Aurora cold start on the Retrieve path: 1.32 s, not ~15 s
+
+Measured properly, with the pause verified rather than assumed: CloudWatch
+`ServerlessDatabaseCapacity` shows the cluster at **0.0 ACU from 18:42 to
+18:56** (paused for >14 min), a single timed `Retrieve` fired at ~18:57, the
+same minute shows the wake to 0.5 ACU — and the call returned in **1.32 s**.
+n=1, but the trace removes the usual doubt about whether the sample was
+actually cold; a rerun costs one quiet 7-minute window.
+
+The standing "~15 s resume" figure (bootstrap docstring, the 2026-08-19
+chatCompacts caveat, the cost entry) was never a measurement of this path: it
+came from `aurora_bootstrap.py`'s Data API experience, where the resume
+surfaces as `DatabaseResumingException` and **our own retry sleeps (10 s,
+20 s) are most of the elapsed time**. `StartIngestionJob` also throws
+"resuming... try again" rather than waiting. The Bedrock Retrieve path
+absorbs the resume instead of throwing, and does it in ~1.3 s.
+
+Product consequence, plainly: the first-message-after-idle latency concern
+that shaped the chatCompacts design caution is ~1.3 s, not ~15 s — auto-pause
+at min-ACU 0 is compatible with the user-facing retrieval path as measured
+today. Re-verify before load-bearing use (n=1, and AWS resume behavior is
+theirs to change), but every current number says the cost floor and the UX
+can coexist.

@@ -416,6 +416,29 @@ artifact.
 - [ ] Also cheap and only possible in Aurora: near-duplicate detection across the
       corpus (`WHERE a.embedding <=> b.embedding < 0.15`) — answers "are my 383
       chunks actually distinct?", a question the Retrieve API cannot express.
+- [ ] **Retrieval-strategy matrix (added 2026-08-20)** — one corpus, one
+      ratified key, every strategy a row. Single-shot rows are done (above);
+      agentic rows run the Converse tool loop (`scripts/kb_agentic_eval.py`,
+      V3.2, model-driven reformulation, ≤5 iterations) and score
+      **session_recall** — deliberately not MRR, a multi-query session has no
+      single ranked list, so the two report shapes must not be compared as if
+      they measured the same thing:
+      - [x] S3 Vectors single-shot · [x] Aurora single-shot (score-fixed) ·
+        [x] Aurora HYBRID single-shot
+      - [ ] S3 Vectors agentic · [ ] Aurora agentic · [ ] Aurora HYBRID
+        agentic (all three in flight 2026-08-20)
+      - [ ] rerank rows ride the existing `RERANK=--rerank` path when the
+        3 req/min Cohere quota makes a full run tolerable (~25 min, FINDINGS
+        2026-08-17)
+      - [ ] **Graph RAG, two candidate rungs, in order:** (a) corpus-native
+        graph expansion — the body-graph chunks ARE an exported graph, so a
+        retriever that expands seed hits along adjacency (connection →
+        its two structure chunks) measures "does graph structure help" with
+        no new store; (b) managed Bedrock GraphRAG = a third KB on Neptune
+        Analytics — **price it via the Price List API first**; it bills per
+        m-NCU-hour with a capacity floor, so it is a create→measure→destroy
+        exhibit, never an always-on store, and it needs its own ruling before
+        any resource exists.
 - [ ] Writeup: a results table + "where each wins" — the README's real headline
 
 **Verified prices (AWS Price List API, us-east-1, 2026-08-13)** so the cost
