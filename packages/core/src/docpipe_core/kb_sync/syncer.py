@@ -1,49 +1,10 @@
-"""Sync health.studio's public corpus into the Bedrock Knowledge Base.
-
-Pipeline (mirrors the `kb` Pulumi component): local markdown → the KB **source** S3
-bucket → `StartIngestionJob` → Bedrock chunks each file and embeds it with
-Titan v2 (1024-dim) → the vectors land in the S3 Vectors index that
-`KnowledgeBaseClient.retrieve()` later queries at chat time.
+"""The mirror itself: plan → guard → upload → prune → ingest, in that order.
 
 Two AWS clients here, deliberately different — easy to conflate:
   * ``s3``            — uploads the markdown files.
   * ``bedrock-agent`` — the *control-plane* client that starts/polls the
     ingestion job. (Retrieval uses ``bedrock-agent-runtime``; ingestion does
     not. Same "bedrock-agent" family name, different endpoint.)
-
-Everything is dependency-injected, so the whole module is unit-tested with
-moto (S3) + a fake agent client — no AWS, no spend. Two properties worth
-knowing:
-
-  * **Upload is incremental locally.** We skip files whose bytes already match
-    the object in S3 (ETag == content MD5 for single-part, SSE-S3 objects), so
-    re-running only re-PUTs what changed.
-  * **The sync is a mirror, not an append.** Keys under the prefix that the
-    local build no longer produces are *deleted* (`prune=True`, the default), so
-    the bucket equals the last `pnpm kb:build` output. This is not tidy-up:
-    chunk keys are slugified section headings, so renaming a heading in `docs/`
-    mints a new key, and before pruning existed the old one stayed in the bucket
-    — embedded, retrievable, indistinguishable from the live chunk at query
-    time, forever. Ordinary editing was enough to trigger it.
-  * **Ingestion is incremental on Bedrock's side.** `StartIngestionJob`
-    re-embeds only added/changed/deleted documents, so re-running after editing
-    one doc is cheap — you don't pay to re-embed the whole corpus. Bedrock's
-    "deleted" means *the object is gone from the bucket*, which is precisely
-    what the prune above makes true; without it that word described nothing.
-  * **A prune is guarded, because remote-minus-local trusts the local tree.**
-    Point a mirror at an unbuilt or half-built `build/kb` and the same diff
-    empties the corpus. `max_delete_ratio` (default 10%) refuses first and
-    mutates nothing. See `BlastRadiusRefused`.
-  * **Metadata sidecars ride along.** A `<file>.md.metadata.json` next to a
-    document is uploaded with it, and Bedrock attaches its attributes to every
-    vector from that document. That is what makes `min_evidence` filtering and
-    named citations possible downstream (see `retrieval.py`). They are pruned
-    *with* their document and never before it.
-  * **An oversized document is refused at plan time.** Titan v2 caps embedding
-    input at 8,192 tokens, and `chunkingStrategy: NONE` makes one file one
-    embedding call — so a too-big file is a FAILED document at *ingestion*,
-    discovered by polling, minutes after the upload that doomed it. The plan
-    refuses first and mutates nothing. See `OversizedDocRefused`.
 """
 
 from __future__ import annotations
@@ -59,17 +20,23 @@ import boto3
 from botocore.exceptions import ClientError
 from pydantic import BaseModel
 
+from docpipe_core.kb_sync.corpus import (
+    _SIDECAR_SUFFIX,
+    DEFAULT_PREFIX,
+    discover_corpus,
+    is_sidecar,
+    prune_order,
+)
+from docpipe_core.kb_sync.guards import (
+    DEFAULT_MAX_DELETE_RATIO,
+    DEFAULT_MAX_DOC_BYTES,
+    BlastRadiusRefused,
+    OversizedDocRefused,
+)
 from docpipe_core.observability import get_logger
 
-DEFAULT_PREFIX = "corpus/"
 _MARKDOWN_CONTENT_TYPE = "text/markdown"
 _JSON_CONTENT_TYPE = "application/json"
-
-# Bedrock's S3 data source attaches `<file>.metadata.json` to every vector it
-# derives from `<file>`. health.studio ships one per chunk (docTitle, section,
-# maxEvidence, verification, citationCount, safetyCritical, …) — without them
-# there is no retrieval-time filtering and a citation is a bare S3 URI.
-_SIDECAR_SUFFIX = ".metadata.json"
 
 # Bedrock ingestion-job lifecycle: STARTING → IN_PROGRESS → one of these.
 _TERMINAL_STATUSES = frozenset({"COMPLETE", "FAILED", "STOPPED"})
@@ -79,78 +46,6 @@ _TIMEOUT_STATUS = "TIMEOUT"
 # HeadObject on a missing key surfaces as one of these error codes (HEAD has no
 # body, so S3 returns bare "404"; moto/other paths may say NoSuchKey/NotFound).
 _MISSING_OBJECT_CODES = frozenset({"404", "NoSuchKey", "NotFound"})
-
-# Blast-radius limit: the fraction of the keys under the prefix that one sync may
-# delete before it refuses and asks to be told the number explicitly.
-#
-# 10% is measured, not picked. Against the 2026-08-14 corpus (383 documents +
-# 383 sidecars) the largest family a routine edit can retire is the 31
-# `body-graph-structure` chunks — 8.1%; every prose source-doc family is ≤ 15
-# chunks (3.9%). So every ordinary heading rewrite passes untouched. The
-# 132-chunk `body-graph-connection` family is 34% and is *meant* to trip this:
-# retiring a third of the corpus is a decision, not a side effect. A half-built
-# `build/kb` or a --source one directory too deep lands far above it.
-DEFAULT_MAX_DELETE_RATIO = 0.10
-
-# Titan v2 refuses embedding inputs past 8,192 tokens. The guard works in bytes
-# because the true tokenizer lives server-side; 4 B/token is deliberately
-# generous for this corpus — its largest chunk measures 24.7 KB ≈ 5k tokens
-# (~4.9 B/token) — so every real chunk clears the 32 KiB limit with ~30%
-# headroom, while a file that trips it is plausibly past the model's cap and
-# worth a human look either way. The proxy assumes Latin-script UTF-8:
-# CJK/Greek-heavy text runs ~3 B per character at ~1 token per character, so a
-# 30 KB file could clear the byte gate yet exceed the token cap — restate this
-# before pointing the guard at a non-English corpus.
-TITAN_V2_MAX_TOKENS = 8192
-_BYTES_PER_TOKEN = 4
-DEFAULT_MAX_DOC_BYTES = TITAN_V2_MAX_TOKENS * _BYTES_PER_TOKEN  # 32 KiB
-
-
-class BlastRadiusRefused(RuntimeError):
-    """A prune would remove more of the bucket than the caller allowed.
-
-    Raised *before* any mutation — no upload, no delete, no ingestion job — so a
-    refused sync leaves the bucket exactly as it was.
-    """
-
-    def __init__(self, *, deletions: int, remote_total: int, ratio: float, limit: float) -> None:
-        self.deletions = deletions
-        self.remote_total = remote_total
-        self.ratio = ratio
-        self.limit = limit
-        super().__init__(
-            f"refusing to prune {deletions} of {remote_total} keys under the prefix "
-            f"({ratio:.0%} > the {limit:.0%} blast-radius limit); nothing was changed.\n"
-            "  The usual cause is a local corpus that is not the one you think it is: an\n"
-            "  unbuilt or half-built build/kb, or a --source pointing one level too deep.\n"
-            "  Rebuild with `pnpm kb:build` and re-run.\n"
-            "  If this many chunks really are retiring, say the number out loud:\n"
-            "  --max-delete-ratio 1.0 (or any value above the ratio printed above)."
-        )
-
-
-class OversizedDocRefused(ValueError):
-    """A document likely exceeds the embedding model's token cap.
-
-    Raised at plan time — before any upload — because with one-file-one-vector
-    the alternative is a FAILED document surfacing mid-ingestion. Sidecars are
-    exempt: they produce no vector, and their 2 KB filterable-metadata cap is
-    Bedrock's own constraint, enforced at ingestion.
-    """
-
-    def __init__(self, docs: list[tuple[str, int]], limit: int) -> None:
-        self.docs = docs
-        self.limit = limit
-        listing = "\n".join(f"  {path} — {size:,} B" for path, size in docs)
-        super().__init__(
-            f"{len(docs)} document(s) exceed {limit:,} B (≈{limit // _BYTES_PER_TOKEN:,} tokens "
-            f"at {_BYTES_PER_TOKEN} B/token; Titan v2 caps at {TITAN_V2_MAX_TOKENS:,}); "
-            "nothing was uploaded.\n"
-            f"{listing}\n"
-            "  Split the source document upstream (`pnpm kb:build`) so each chunk embeds\n"
-            "  whole, or — if the file is measured to fit anyway — raise max_doc_bytes\n"
-            "  (--max-doc-bytes) above the size printed above."
-        )
 
 
 class SyncAction(StrEnum):
@@ -214,54 +109,6 @@ class SyncReport(BaseModel):
     @property
     def sidecars(self) -> list[PlannedDoc]:
         return [d for d in self.docs if d.sidecar]
-
-
-def discover_corpus(root: Path) -> list[Path]:
-    """Every ``*.md`` under ``root``, plus each one's metadata sidecar.
-
-    A sidecar is only collected when its ``.md`` is itself in the corpus: an
-    orphan ``foo.md.metadata.json`` with no ``foo.md`` describes nothing, and
-    uploading it would leave a file in the bucket that no ingestion ever reads.
-    Sorted so keys and logs are deterministic.
-    """
-    docs = sorted(p for p in root.rglob("*.md") if p.is_file())
-    found: list[Path] = []
-    for doc in docs:
-        found.append(doc)
-        sidecar = doc.with_name(doc.name + _SIDECAR_SUFFIX)
-        if sidecar.is_file():
-            found.append(sidecar)
-    return found
-
-
-def is_sidecar(path: Path) -> bool:
-    return path.name.endswith(_SIDECAR_SUFFIX)
-
-
-def prune_order(keys: set[str]) -> list[str]:
-    """Order a delete set so a document is always removed before its sidecar.
-
-    The order is a safety property, not a cosmetic one. A `.md` left in the
-    bucket *without* its `.metadata.json` is a silent defect: Bedrock re-embeds
-    it with no attributes, so an unrated chunk sails straight through a
-    `min_evidence` filter downstream (`retrieval.py`). The reverse — a sidecar
-    whose document is gone — is inert: no ingestion reads it, which is the
-    orphan `discover_corpus` already refuses to create locally. So if a prune
-    dies half-way through, it must die on the inert side.
-
-    Plain `sorted()` happens to produce this order today (a string sorts before
-    any string it prefixes), but that is a property of the collation, not a
-    decision. This says it on purpose.
-    """
-    ordered: list[str] = []
-    for key in sorted(keys):
-        if key.endswith(_SIDECAR_SUFFIX) and key[: -len(_SIDECAR_SUFFIX)] in keys:
-            continue  # emitted just below, right after its document
-        ordered.append(key)
-        sidecar = key + _SIDECAR_SUFFIX
-        if sidecar in keys:
-            ordered.append(sidecar)
-    return ordered
 
 
 def _digest(data: bytes) -> str:
