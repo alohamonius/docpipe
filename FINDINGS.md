@@ -1356,3 +1356,21 @@ sync fan-out + ingest, then the Phase 5b measurements.
 Budget first applies of never-run branches as N short failing runs, not one
 long one — the same one-error-per-apply cadence as the 2026-08-13 first
 deploy.
+
+## 2026-08-20 — first Aurora ingest: 496/496, and the two KBs no longer hold the same corpus
+
+Job `B6RTYKM3K9` on KB `A44CISMRAM`: scanned 496, indexed 490, **failed 6**
+with only `"The server encountered an internal error"` — no document names, no
+error class. A plain re-run (job 2) indexed exactly those 6 as *modified*, 0
+failed. So: opaque internal errors on an Aurora ingest are transient; re-run
+before investigating. `SELECT count(*)` over the Data API confirms **496 rows**
+in `bedrock_integration.bedrock_kb` — per the standing rule, the store was
+verified directly, not trusted from job stats.
+
+The number that matters for Phase 5b: the source bucket holds the **496-chunk
+corpus** (the health.studio re-sync already landed), so Aurora indexed 496 —
+but the S3 Vectors KB (`JDNNGSU1JT`) still holds **383 vectors** from the
+pre-06 corpus and its 0.7879 baseline was measured on those. The two stores
+are NOT currently comparable. Before any cross-store benchmark either
+re-ingest the S3 Vectors KB on the 496 corpus and re-baseline it, or the
+comparison measures the corpus delta, not the store.
