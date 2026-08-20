@@ -1540,3 +1540,37 @@ What holds and what does not:
 
 The Aurora HYBRID agentic run was stopped externally at question 37/66 —
 no report written; rerun pending (~10 min).
+
+## 2026-08-20 — six agentic runs: the 0.9508 was a high roll, hybrid is flat, and the union hits 61/61
+
+Two runs of each agentic config (V3.2, temp 0.3), completing the matrix and
+answering the variance question the first entry left open:
+
+| config | run 1 | run 2 |
+|---|---|---|
+| S3 Vectors agentic | 0.8852 | 0.9016 |
+| Aurora agentic (fixed) | 0.9508 | 0.9016 |
+| Aurora HYBRID agentic | 0.9180 | 0.9180 |
+
+1. **The store effect is zero, again.** Aurora-agentic run 2 landed exactly on
+   S3-agentic run 2 (0.9016); the 0.9508 was single-run luck. Honest summary
+   of all six: agentic retrieval sits at **0.89–0.95 on either store, any
+   search mode** — the loop is the effect, the store is not.
+2. **Hybrid in the loop is flat** (0.918 twice — eerily stable) — consistent
+   with single-shot, where hybrid was mildly negative. Third strike for the
+   lexical channel on this corpus; it stays a per-miss diagnostic tool.
+3. **Reformulation loses what verbatim wins.** Only `prose-13` is missed by
+   all six agentic runs — and single-shot HITS it (as it does `prose-06`,
+   missed by 5 of 6). The agent rephrases away from a phrasing that already
+   won. Agentic is not a superset of single-shot.
+4. **The union is the result: single-shot ∪ agentic = 61/61 answerable
+   questions.** The corpus can answer everything in the ratified key; no
+   single strategy shows it. A production shape that runs the verbatim query
+   as tool call 1 and lets the model reformulate from there would capture
+   both — worth one measured run before Phase 3 settles the agent design.
+
+Harness fix that made runs 5–6 possible: V3.2 sometimes emits **several
+toolUse blocks in one message** (parallel searches), and Converse demands all
+their toolResults in a single user message — one-message-per-result fails
+with "Expected toolResult blocks at messages.N.content". The 2026-08-18
+prototype has the same latent bug; fixed in `kb_agentic_eval.py` only.

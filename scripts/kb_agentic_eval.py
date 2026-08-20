@@ -128,6 +128,12 @@ def run_session(
             break
 
         messages.append({"role": "assistant", "content": output_message["content"]})
+        # V3.2 sometimes emits SEVERAL toolUse blocks in one message (parallel
+        # searches — observed live 2026-08-20). Converse requires every one of
+        # their toolResults in a SINGLE following user message; one message per
+        # result fails validation ("Expected toolResult blocks at
+        # messages.N.content for the following Ids: …").
+        tool_results: list[dict[str, Any]] = []
         for block in output_message["content"]:
             if "toolUse" not in block:
                 continue
@@ -148,19 +154,15 @@ def run_session(
                 "\n\n".join(f"[{p.citation}]\n{p.text[:600]}" for p in passages)
                 or "No passages found."
             )
-            messages.append(
+            tool_results.append(
                 {
-                    "role": "user",
-                    "content": [
-                        {
-                            "toolResult": {
-                                "toolUseId": tool_use["toolUseId"],
-                                "content": [{"text": rendered}],
-                            }
-                        }
-                    ],
+                    "toolResult": {
+                        "toolUseId": tool_use["toolUseId"],
+                        "content": [{"text": rendered}],
+                    }
                 }
             )
+        messages.append({"role": "user", "content": tool_results})
 
     return {
         "retrievals": retrievals,
