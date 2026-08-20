@@ -31,8 +31,9 @@ below map onto them; the module numbers are a study order, not a schedule.
 **M8 is the round that gets people offers or sinks them.** You brought a
 project; a good interviewer will spend the whole slot attacking it. M8 is
 written hostile on purpose — it lists docpipe's *actual* soft spots (the
-guardrail that's provisioned but not yet wired in, the zero evals, the
-unverified 2 KB sidecar limit) before someone else finds them. Knowing your own
+guardrail that's provisioned but not yet wired in, the unmeasured
+generation-side evals, the unverified 2 KB sidecar limit) before someone else
+finds them. Knowing your own
 weak spots and having a plan for each reads as senior. Being surprised by them
 does not.
 
@@ -48,8 +49,10 @@ does not.
    measured that yet."
 3. **No evaluation story.** The single most common gap in RAG candidates. If you
    cannot answer "how do you know retrieval got better?" the rest doesn't
-   matter. M3 exists because this is where most people fail, and — be honest —
-   it is currently docpipe's biggest genuine hole (Phase 5b is unstarted).
+   matter. M3 exists because this is where most people fail. Since 2026-08-16
+   the *retrieval* half is measured (the 66-question set and the rerank ruling —
+   see M3.1); the *generation* half is still unmeasured and remains the honest
+   gap to own.
 
 ## How to drill
 

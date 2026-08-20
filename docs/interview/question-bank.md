@@ -79,8 +79,10 @@ Ten seconds each. These are filters; hesitation is the failure, not error.
 > **Follow-up:** what does your retry do to a queue-backed worker? (Retries
 > extend visibility-timeout pressure; a poison message that always throttles
 > must eventually hit the DLQ rather than retry forever.)
-> *docpipe: `llm.py:23-27, 97-107` — retries `2**attempt`, **no jitter**. Know
-> this is a gap and say so before they say it.*
+> *docpipe: `llm.py` — retries `2**attempt` **plus up to 1 s of jitter** (fixed
+> 2026-08-17; was bare `2**attempt`, which synchronises a throttled fleet).
+> botocore's `adaptive` retry mode remains the fuller answer — client-side rate
+> limiting, not just desynchronisation — and is fair "what next" material.*
 
 **M1.3 — Your retry catches three error codes. Which errors must you NOT retry, and why?**
 > `ValidationException`, `AccessDeniedException`, `ResourceNotFoundException` —
@@ -117,7 +119,7 @@ This is the core round, and docpipe's strongest material.
 **M2.1 — Bedrock Managed Knowledge Base went GA on 2026-06-17 and collapses ingestion, parsing, chunking, embeddings, vector store and re-ranking into one primitive. Why did you build a custom KB instead?**
 > The flagship question of this loop. Strong answer: **Managed KB's value is
 > exactly the layers docpipe deliberately owns.** The corpus arrives
-> *chunk-final* from health.studio's `pnpm kb:build` — 285 files, each already
+> *chunk-final* from health.studio's `pnpm kb:build` — 383 files, each already
 > one retrievable unit carrying an evidence legend (★ scale + non-diagnosis
 > disclaimer) in its header, plus a sidecar of evidence attributes that drive a
 > retrieval-time floor. A managed pipeline that owns chunking and embedding is a
@@ -147,9 +149,12 @@ This is the core round, and docpipe's strongest material.
 > which is the good kind. docpipe's largest chunk is measured at 24.7 KB /
 > 3,694 words ≈ 5k tokens: fits, without much room.
 > **Follow-up:** how would you catch this before it hits Bedrock? A pre-flight
-> token count in `CorpusSyncer.plan()` — currently absent, and a fair "what
-> would you add next" answer.
-> *docpipe: `FINDINGS.md` sizing checks.*
+> size guard in `CorpusSyncer.plan()` — added 2026-08-17: `OversizedDocRefused`
+> refuses the whole plan, before any upload, when a document exceeds 32 KiB
+> (8,192 tokens × a deliberately generous 4 B/token; the largest real chunk is
+> ~4.9 B/token). Escape hatch `--max-doc-bytes`, same pattern as the
+> blast-radius guard.
+> *docpipe: `kb_sync.py` (`DEFAULT_MAX_DOC_BYTES`), `FINDINGS.md` sizing checks.*
 
 **M2.4 — Changing `chunkingConfiguration` on a live data source: what actually happens?**
 > It **replaces** the data source. `pulumi preview --diff` showed
@@ -167,14 +172,23 @@ This is the core round, and docpipe's strongest material.
 > Two reasons, and weak answers only give the first. (1) An excluded chunk never
 > reaches the model and never consumes context or tokens. (2) **`top_k`
 > semantics**: post-filtering returns *up to* k, often fewer, and silently
-> degrades recall; pre-filtering returns k *qualifying* passages. The filter is
-> a Bedrock `greaterThanOrEquals` on the `maxEvidence` sidecar attribute.
+> degrades recall; pre-filtering returns k *qualifying* passages.
+> **The filter is no longer a flat `greaterThanOrEquals`** (updated 2026-08-16):
+> it is OR'd with `safetyCritical = true`. The flat floor was measured to be
+> wrong in the worst direction — it deleted the machine-readable **red-flag
+> screen** (`maxEvidence: 0` *and* `safetyCritical: true`, carrying the cardiac
+> row) and made 11 of 66 golden questions unanswerable, because the corpus's
+> honesty apparatus is unrated *by construction*. A floor meant to raise quality
+> removed the ability to abstain and the safety net while keeping every
+> confident claim — the exact inversion of its purpose. This is now one of the
+> strongest stories in the repo; tell it.
 > **Follow-up:** why does it default to `None`? Because the caller decides the
 > floor — the health.studio code graph enforces ≥1 on its pain-reasoning path,
 > but a general question shouldn't refuse unrated framing prose.
-> *docpipe: `retrieval.py:74-98`.*
+> *docpipe: `retrieval.py` (`retrieve()` docstring and filter), health.studio
+> `docs/FINDINGS.md` 2026-08-16.*
 
-**M2.6 — 99 of 285 chunks have `maxEvidence: 0` and 180 carry no citation. Is that a corpus bug?**
+**M2.6 — 97 of 383 chunks have `maxEvidence: 0` and 172 carry no citation. Is that a corpus bug?**
 > No — framing prose and conceptual models are legitimate content. The bug would
 > be letting them **retrieve identically to a systematic review**. The corpus is
 > honest about its weak spots, so retrieval must not be. Two hooks separate
@@ -190,7 +204,7 @@ This is the core round, and docpipe's strongest material.
 > — a silent quality failure, not an error. The fix collects a sidecar only when
 > its `.md` is in the corpus (an orphan sidecar describes nothing).
 > **Follow-up:** why count sidecars separately from documents? Because a sidecar
-> produces no vector — reporting 570 "docs" for a 285-doc corpus is a lie that
+> produces no vector — reporting 766 "docs" for a 383-doc corpus is a lie that
 > would make your ingestion stats meaningless.
 > *docpipe: `kb_sync.py:116-131`, `PlannedDoc.sidecar` at `kb_sync.py:70-80`.*
 
@@ -209,7 +223,7 @@ This is the core round, and docpipe's strongest material.
 **M2.9 — Re-running the sync after editing one document: what do you pay for?**
 > Locally: only changed bytes are re-PUT. On Bedrock: `StartIngestionJob`
 > re-embeds only added/changed/deleted documents. So the cost is one document's
-> embedding, not 285. Know both halves — candidates usually know one.
+> embedding, not 383. Know both halves — candidates usually know one.
 > *docpipe: `kb_sync.py:16-27`.*
 
 **M2.10 — S3 Vectors vs OpenSearch Serverless vs Aurora pgvector. Choose, with numbers.**
@@ -247,8 +261,21 @@ This is the core round, and docpipe's strongest material.
 **M3.1 — You changed the chunking strategy. How do you know retrieval got better?**
 > A golden set of question → expected-passage(s) pairs, scored on recall@k /
 > MRR / nDCG, run before and after. Without it you have an opinion.
-> **docpipe's honest state: there is no golden set yet.** Phase 5b proposes
-> ~30–50 pairs. Lead with the gap and the plan; do not pretend.
+> **docpipe has this now (since 2026-08-16), and it is the strongest material
+> in the repo.** A 66-question set (authored 2026-08-14, ratified separately),
+> baseline recall@5 **0.7879** / MRR 0.55, rank-1 hits 29/66. A miss-rank probe
+> showed the rescuable misses sat at ranks 7–19, so the search pool widened to
+> 25 with Cohere rerank 3.5 (cross-encoder) on top: recall@5 **0.8182**, MRR
+> **0.68**, rank-1 **39**/66 — and a control re-run came back identical to four
+> decimals with an identical miss set. Ships with two named reproducible losses
+> (*biblio-01*, *nerve-01*) and a hard constraint: the rerank model is 3 RPM
+> account-wide, non-adjustable. The reusable answer skeleton: *set → baseline →
+> hypothesis → measured delta → named costs.*
+> **The remaining honest gap is generation-side**: faithfulness, citation
+> coverage, refusal rate on out-of-corpus questions — all still unmeasured.
+> Retrieval is evaluated; generation is not. Say exactly that.
+> *docpipe: `retrieval.py` (`retrieve()` docstring), `kb_eval.py`,
+> `FINDINGS.md` 2026-08-16/17.*
 
 **M3.2 — Separate retrieval quality from generation quality. Why does the distinction matter operationally?**
 > They fail differently and are fixed differently. Bad retrieval → chunking,
@@ -489,8 +516,8 @@ This is the core round, and docpipe's strongest material.
 **M6.4 — Contextual grounding is set to 0.75 for GROUNDING and RELEVANCE. What is it scoring, and where does it misfire here?**
 > It scores the model's response against the retrieved passages (grounding) and
 > against the user's query (relevance), blocking below threshold — a runtime
-> hallucination check. The misfire risk in docpipe is specific: with 99/285
-> chunks unrated and 180 uncited, a well-grounded answer built on *framing
+> hallucination check. The misfire risk in docpipe is specific: with 97/383
+> chunks unrated and 172 uncited, a well-grounded answer built on *framing
 > prose* passes the grounding check while being weakly evidenced. **Grounding ≠
 > evidence quality.** The guardrail checks the first; `min_evidence` checks the
 > second. They are not substitutes.
@@ -542,7 +569,7 @@ are the interview.
 > DynamoDB hot partitions on a power user, then Lambda concurrency), and how you'd
 > know (EMF metrics + a p95 latency alarm).
 
-**M7.2 — The corpus grows from 285 chunks to 5 million. What changes?**
+**M7.2 — The corpus grows from 383 chunks to 5 million. What changes?**
 > Chunk-final stops being tenable (nobody hand-builds 5M chunks) → managed
 > chunking, which reopens M2.2's header problem → the evidence legend must move
 > into per-chunk metadata rather than prose. S3 Vectors still fits (2B/index).
@@ -576,14 +603,18 @@ answer of the form "yes, here's why, here's what I'd do."
 
 1. **"Your guardrail doesn't do anything."** True today — provisioned, not
    wired. Phase 3 item. (M6.1)
-2. **"You have no evaluation. How do you know any of this works?"** The honest
-   answer: I don't, beyond unit tests and a smoke test. Phase 5b is the plan and
-   it's unstarted. **This is the weakest point in the project — own it fast.**
+2. **"You have no evaluation. How do you know any of this works?"** Half-stale
+   since 2026-08-16 — correct them with numbers: retrieval *is* evaluated (the
+   66-question ratified set, recall@5 0.79 → 0.82 under reranking, measured
+   twice, M3.1). The half that's still true: **generation quality is
+   unmeasured** — no faithfulness, citation-coverage, or refusal-rate numbers.
+   Concede that half fast, with the M3.3 metric list as the plan.
 3. **"You built a custom KB two months after AWS shipped the managed one."**
    (M2.1 — you have a genuinely good answer.)
-4. **"Your retries have no jitter."** Correct — `2**attempt`, and under
-   concurrent Lambdas that synchronises retry storms. One-line fix; botocore's
-   adaptive retry mode is the better one.
+4. **"Your retries have no jitter."** Fixed 2026-08-17 — `2**attempt` plus up
+   to 1 s of uniform jitter, with the rng injected for tests. The stronger
+   follow-up you can now volunteer: botocore's `adaptive` mode adds client-side
+   rate limiting on top, which per-call jitter does not.
 5. **"You never confirmed the sidecar fits the 2 KB metadata cap."** Correct —
    ≤1,705 B pretty-printed is a calculation, not a measurement. (M2.12)
 6. **"Phase 5's compute is still undecided."** Yes: EKS's ~$73/mo control plane
