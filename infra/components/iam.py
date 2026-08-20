@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import json
 
-import pulumi_aws as aws
-
 import pulumi
+import pulumi_aws as aws
 
 
 class Iam(pulumi.ComponentResource):

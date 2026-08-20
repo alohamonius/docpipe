@@ -47,7 +47,7 @@ content) via Bedrock Knowledge Bases, with citations.
   config flip (`retrieval.py` already takes `knowledge_base_id`) and double as a
   rollback path. S3 Vectors idles at ~$0, so keeping it costs nothing.
   **Build status: not built.** Only the S3 Vectors KB exists today; the dev stack
-  sets `enableAurora: "false"` (`pulumi/Pulumi.dev.yaml:8`) and flipping it to
+  sets `enableAurora: "false"` (`infra/Pulumi.dev.yaml:8`) and flipping it to
   true still would not produce a KB-attachable cluster — see the five gaps in
   Phase 2. "Primary" is the target, not the deployed state.
   **Deferred 2026-08-16 (the human's): shipping on S3 Vectors alone; Aurora
@@ -159,9 +159,11 @@ tool use, R1 remains the summaries model.)
 
 ## Phase 2 — Infra foundation ✅ (deployed 2026-08-13, Pulumi)
 
-Originally built as Terraform modules, then ported to **Pulumi (Python)** in
-`pulumi/` (one `ComponentResource` per concern + two boto3 dynamic providers
-for pulumi-aws gaps: S3 Vectors, invocation logging). Terraform deleted.
+Originally built as Terraform modules in `infra/`, then ported to **Pulumi
+(Python)** (one `ComponentResource` per concern + two boto3 dynamic providers
+for pulumi-aws gaps: S3 Vectors, invocation logging). Terraform deleted in
+`825aa4b`; the Pulumi tree lived in `pulumi/` until it reclaimed the `infra/`
+name on 2026-08-21 — so `infra/` before that date means Terraform.
 `pulumi up` on the dev stack: **53 resources live** — KB `SJQAFQXPH7`,
 guardrail `pjpeeu9hf68a`, invocation logging active. Gotchas in FINDINGS.md.
 
@@ -192,7 +194,7 @@ guardrail `pjpeeu9hf68a`, invocation logging active. Gotchas in FINDINGS.md.
         master secret. HNSW `ef_construction=256`, GIN `to_tsvector`, GIN
         `custom_metadata`. `hnsw.ef_search` stays a session knob, which is what
         makes the Phase 5b sweep possible without an index rebuild.
-  - [x] **Second KB resource** — `pulumi/components/kb_aurora.py`, over the
+  - [x] **Second KB resource** — `infra/components/kb_aurora.py`, over the
         *same* source bucket, identical Titan v2 @ 1024 FLOAT32, identical
         `chunkingStrategy: NONE`. Held identical on purpose: if these drift the
         benchmark measures the drift instead of the store.
@@ -234,7 +236,7 @@ reversible at zero cost. That stops being true after the first ingest. Do these
 in order:
 
 - [ ] **BLOCKER — deployed config ≠ code.** The `NONE` change in
-      `pulumi/components/kb.py` is now **committed** (`dbc3e8d`) and **asserted
+      `infra/components/kb.py` is now **committed** (`dbc3e8d`) and **asserted
       by a test** (`5430984`, written red first) — but **not applied**.
       **Re-verified 2026-08-14** against the live stack: data source
       `KPAQK6MQY4` is `AVAILABLE`, last updated 2026-08-12 23:02 UTC, and still
@@ -463,7 +465,7 @@ backup **$0.021/GB-Mo**, I/O **$0.20 per million**. Note `min_capacity = 0` bill
 - [ ] Cost backstop: **AWS Budgets alarm on Bedrock spend** + CloudWatch alarm
       on invocation-count spikes (catches abuse before the bill does)
 - [ ] README: architecture diagram render, demo GIF/recording, cost table
-- [ ] `terraform destroy` clean-pass verified (no orphaned resources)
+- [ ] `make infra-down` clean-pass verified (no orphaned resources)
 
 ## Non-goals
 

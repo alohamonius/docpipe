@@ -24,7 +24,7 @@ it into real rules (README, PLAN, a test).
 ## 2026-08-13 — Pulumi S3-backend + dynamic-provider gotchas
 
 Hit while bringing the dev stack up for the first time (all fixed in
-`pulumi/components/`):
+`infra/components/`):
 
 - **`pulumi login s3://bucket` 301s unless the URL is region-qualified.**
   Working form: `pulumi login
@@ -115,7 +115,7 @@ default into a choice that now has to be argued.
   Drive, OneDrive, Web Crawler), hybrid search, document ranking, and agentic
   retrieval for multi-hop queries. Evidence:
   <https://aws.amazon.com/about-aws/whats-new/2026/06/amazon-bedrock-managed-knowledge-base/>
-  **Consequence:** `pulumi/components/kb.py` builds the *custom* KB (own S3
+  **Consequence:** `infra/components/kb.py` builds the *custom* KB (own S3
   Vectors index, own chunking config) that Managed KB is designed to replace,
   and "build a RAG pipeline on Bedrock" now defaults to Managed KB. The custom
   KB is still correct **here** for one specific reason: the corpus is
@@ -152,7 +152,7 @@ rather than designed around. Recording the reasoning because the cost story in
 `README.md` was written on the opposite assumption and now needs to move.
 
 - **The ~15s is a cluster resume, not network latency.** Aurora Serverless v2
-  with `min_capacity = 0` (`pulumi/components/data.py:156`, default
+  with `min_capacity = 0` (`infra/components/data.py:156`, default
   `aurora_min_acu: float = 0`) auto-pauses after an inactivity window; the next
   connection resumes it before serving. AWS's published figure is **~15 seconds**
   from 0 ACU, with auto-pause after ~5 min idle (configurable). **Neither number
@@ -259,7 +259,7 @@ Real requirements, from the Aurora user guide — more than we had assumed:
 
 - PostgreSQL **16.1+** (our `aurora_engine_version` default 16.6 qualifies).
 - **pgvector ≥ 0.5.0** — `CREATE EXTENSION IF NOT EXISTS vector;`
-- **RDS Data API must be enabled.** `pulumi/components/data.py` does **not** set
+- **RDS Data API must be enabled.** `infra/components/data.py` does **not** set
   this today (`enable_http_endpoint`) — a concrete gap before Aurora can back a KB.
 - A dedicated `bedrock_user` role + its own Secrets Manager secret. Our cluster
   uses `manage_master_user_password=True`, which is the *master* secret, not this.
@@ -331,7 +331,7 @@ Two things, both measured against `build/kb/` from a clean `pnpm kb:build` on
   'chunk_overlap_percentage']` — then green on `dbc3e8d`. A test that was never
   red proves nothing.
 - **The check reads the AST, not the deployed stack, and that is deliberate.**
-  `pulumi-aws` lives in `pulumi/venv`, not the uv workspace, so a Pulumi-mock
+  `pulumi-aws` lives in `infra/venv`, not the uv workspace, so a Pulumi-mock
   test would make the contract depend on an optional install — the same
   "enforced by nothing, in practice" failure it exists to end. Parsing also
   ignores comments, which is required here: the component's comment names
@@ -366,7 +366,7 @@ It should not, and the reason is arithmetic.
   not talk to Aurora: **Bedrock** does. The app's own Postgres is its own DB.
   So the integration is **HTTPS + SigV4 to API Gateway** — no tunnel, no NAT
   (docpipe deliberately has none, ~$33/mo), $0 of networking.
-- **The seam does not exist yet.** `pulumi/__main__.py` wires network, data,
+- **The seam does not exist yet.** `infra/__main__.py` wires network, data,
   messaging, kb, iam, safety — 53 resources, and **no Lambda and no API
   Gateway**; the only Lambda artifact is an exported role ARN. So this is a
   choice about a thing not yet built, not a migration.
@@ -440,11 +440,11 @@ wrong. Aurora was never rejected; it is `PLAN.md`'s stated primary vector store.
 Reading the code to answer properly turned up a gap the plan did not list.
 
 - **The Aurora component produces no outputs, so nothing can consume it.**
-  `pulumi/components/data.py:142-171` creates the cluster and its instance into
+  `infra/components/data.py:142-171` creates the cluster and its instance into
   a *local* `cluster` variable: no `self.aurora_*` attributes are set, and
   `register_outputs({})` is empty. Bedrock KB's `rdsConfiguration` needs
   `resourceArn`, `credentialsSecretArn`, `databaseName`, `tableName` and a
-  `fieldMapping`; `pulumi/__main__.py` can read **none** of them, and
+  `fieldMapping`; `infra/__main__.py` can read **none** of them, and
   `components/kb.py` never mentions Aurora at all. This is prior to the four
   gaps recorded on 2026-08-13 (`enable_http_endpoint`, `bedrock_user`, the
   table + three indexes, and — also newly listed — the second KB resource
@@ -539,7 +539,7 @@ reader receive. That is the same bare-evidence failure the `NONE` chunking rule
 exists to prevent, arriving through the sidecar instead of through a splitter.
 
 **BLOCKER B — `includeForEmbedding: false` does not buy non-filterable.**
-`pulumi/components/kb.py:80-89` constructs `S3VectorsIndex` with **no
+`infra/components/kb.py:80-89` constructs `S3VectorsIndex` with **no
 `metadataConfiguration` block at all**, so no key is declared non-filterable and
 the 2 KB filterable cap applies to every attribute. The largest bibliography is
 ~1,832w ≈ 12 KB — it cannot fit. `includeForEmbedding` and filterability are
@@ -715,7 +715,7 @@ $ uv run --with boto3 python -c "import boto3; print(sorted(boto3.client('s3vect
 ['CreateIndex','CreateVectorBucket','DeleteIndex','DeleteVectorBucket',…,'PutVectors','QueryVectors',…]
 ```
 
-**Trap in the way of that fix:** `pulumi/components/s3vectors.py:19` lists the
+**Trap in the way of that fix:** `infra/components/s3vectors.py:19` lists the
 replace-triggering inputs in `_KEYS`, and the provider defines no `update()`.
 Adding `non_filterable_metadata_keys` to the resource's props **without** adding
 it to `_KEYS` makes `diff()` return `changes=False` — Pulumi reports "unchanged"
@@ -1574,3 +1574,77 @@ toolUse blocks in one message** (parallel searches), and Converse demands all
 their toolResults in a single user message — one-message-per-result fails
 with "Expected toolResult blocks at messages.N.content". The 2026-08-18
 prototype has the same latent bug; fixed in `kb_agentic_eval.py` only.
+
+## 2026-08-21 — `pulumi/` → `infra/`: the rename is safe for state, and it exposed an isort misclassification that had been silently wrong all along
+
+Renamed the IaC directory so all four top-level directories are named for their
+role (`packages` / `services` / `scripts` / `infra`) rather than three roles
+plus one tool. Notes worth keeping, because two of the three scary parts were
+not real and the one real cost was somewhere nobody looks.
+
+- **Stack state does NOT move with the directory.** Pulumi keys state on the
+  project name in `Pulumi.yaml` (`name: docpipe`), not on the containing path.
+  Verified after the move: `pulumi -C infra stack output` returns all 22
+  outputs, guardrail `pjpeeu9hf68a`, unchanged. The S3 backend key is likewise
+  untouched — `s3://docpipe-tfstate-733866507398/pulumi` → the `pulumi` there
+  is an **S3 key prefix**, not a directory, and must never be renamed to match.
+
+- **What DOES break is the local selected-stack pointer**, and it fails with a
+  misleading message: `error: no stack selected`. Pulumi stores that pointer in
+  `~/.pulumi/workspaces/docpipe-<sha1 of the Pulumi.yaml path>-workspace.json`.
+  The path is in the hash, so after any move Pulumi looks for a filename that
+  does not exist and reports it as "nothing selected" rather than "moved".
+  Fix is one `pulumi stack select dev`. Machine-local: every other developer
+  and CI hits it once, and nothing in the repo can pre-empt it.
+
+- **A uv-created venv survives being moved.** Expected `infra/venv` to need
+  rebuilding from baked-in absolute paths; it did not. `sys.prefix` is derived
+  from the executable's own location, so `import pulumi_aws` worked
+  immediately post-move. (It also has no `pip`, so there is no stale shebang
+  to break — uv omits it by default.)
+
+- **The find that justifies the rename on its own:** the directory name was
+  corrupting ruff's isort. Ruff infers first-party membership by matching a
+  module name against directories under `src` (default: project root), so a
+  top-level directory named `pulumi/` made `import pulumi` — the **SDK** —
+  resolve as *first-party*. Every import block under the old `pulumi/` was
+  sorted on that false premise, and CI's `infra` job was green on all of it.
+  Renaming produced `I001` in all 10 files at once; the imports had not
+  changed, the classification had. Reduced to a probe: identical file, identical
+  ruff config, the only variable an **empty** sibling directory —
+
+  | sibling `pulumi/` dir | `uvx ruff check` |
+  |---|---|
+  | absent | `I001` — `pulumi` sorts as third-party |
+  | present | `All checks passed!` |
+
+  Generalised: **any top-level directory sharing a name with a third-party
+  dependency silently reclassifies that dependency as first-party for isort.**
+  Worth remembering before naming a directory `boto3/`, `pytest/` or similar.
+
+- **Two references a `pulumi/` grep does not find**, both of which fail *soft*
+  rather than loudly: `services/kb_sync/sync.py:53`
+  (`_DEFAULT_PULUMI_DIR = parents[2] / "pulumi"`) and `scripts/status.py:372`
+  (`count("__main__.py", "pulumi")`), plus `aurora_bootstrap.py`'s `cwd="pulumi"`.
+  `_pulumi_outputs` swallows `OSError` and returns `{}`, so a missed rename
+  there does not crash — it quietly drops the stack-output fallback and starts
+  demanding `--bucket`. Grep for the bare quoted directory name, not just the
+  path prefix with a slash.
+
+- **Historical ambiguity, stated once so it is not rediscovered:** `infra/` was
+  the *Terraform* tree until it was deleted in `825aa4b`. So in commits, docs
+  and findings, **`infra/` before 2026-08-21 means Terraform; after it means
+  Pulumi.** `git log --follow` traverses the rename on every file.
+
+Path references in dated entries above were rewritten `pulumi/…` → `infra/…`
+rather than left to rot. The claims are unchanged and the files are the same
+files; a finding whose `file:line` no longer resolves is not evidence.
+
+Also corrected in the same pass, all stale rather than wrong-at-the-time:
+`services/kb_sync/README.md` told operators to run `terraform output` in
+`infra/envs/dev` (deleted in `825aa4b`; the code has called
+`pulumi stack output` for months), `services/worker/README.md` hard-committed
+to EKS/Helm/IRSA and "Phase 4" when PLAN.md Phase 5 has compute as an open
+decision with **Lambda as the default recommendation** and EKS discouraged at
+~$73/mo, and `PLAN.md`'s Phase 6 checklist still asked for a
+`terraform destroy` clean-pass.

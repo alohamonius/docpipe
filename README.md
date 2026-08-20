@@ -127,27 +127,42 @@ worker + Aurora side is torn down between sessions.
 
 ## Repo layout
 
-The same taxonomy as a TS monorepo's `packages/` + `apps/`, with the runnable
-half split by *who runs it* — that split is the load-bearing rule:
+Every top-level directory is named for the **role** it plays, never for the
+tool that happens to implement it — and the runnable half is split by *who
+runs it*, which is the load-bearing rule:
 
 ```
-packages/core/     the library ("packages/"): models, storage, queue, Bedrock
+packages/core/     the library: models, storage, queue, Bedrock
                    chat/summarization/agent clients, retrieval, eval scoring,
                    corpus sync. Installed, typed, unit-tested; src layout so
                    tests can only import the installed package. All logic
                    lives here — nothing below is allowed to get clever.
-services/          the deployables ("apps/"): each dir ships as a unit.
-                   kb_sync (corpus sync CLI) today; api (Lambda) and worker
-                   (SQS consumer) land in Phase 3. Thin shells over core.
+services/          the deployables: each dir ships as a unit. kb_sync (corpus
+                   sync CLI) today; api (Lambda) lands in Phase 3, worker
+                   (SQS consumer) in Phase 5. Thin shells over core.
 scripts/           operator CLIs — run from a laptop, never deployed:
                    kb_eval, kb_agentic_eval, aurora_bootstrap, status.
                    Also thin shells over core; if a script grows logic,
                    the logic moves into core with tests (see agent.py).
-pulumi/            infrastructure as code, quarantined: one component per
+infra/             infrastructure as code, quarantined: one component per
                    concern, own CI job, no imports in either direction
                    between it and the Python packages.
 docs/              runbooks, committed baselines/reports, decision records.
 ```
+
+If you know TS monorepos, the shape is familiar — `packages/` is `packages/`,
+`services/` is `apps/`, `scripts/` is `tools/`, `infra/` is `infra/`. Two of
+those names are deliberately *not* borrowed. Python has no convention above the
+package level (the one real rule, PyPA's `src/` layout, is already followed
+inside `packages/core/`), so the names answer to Python readers instead:
+`apps/` is Django's word for pluggable libraries — the opposite of a deployable
+— and these are backend units anyway, a Lambda and a queue consumer.
+`scripts/` is plain idiomatic Python.
+
+The rule that keeps this from rotting: **`services/` and `scripts/` are thin
+shells.** The moment one grows logic, that logic moves into `packages/core`
+with tests — which is exactly what happened to the agent tool loop in
+`c74898f`.
 
 ## Infra / secrets split
 
@@ -156,7 +171,7 @@ Everything in this repo is public by design. What never enters git:
 - Pulumi state — lives in a self-managed S3 backend (`pulumi login s3://…`)
 - credentials — AWS auth via profile/SSO/environment, never in code
 
-See [`pulumi/README.md`](pulumi/README.md) for the component map and
+See [`infra/README.md`](infra/README.md) for the component map and
 [`PLAN.md`](PLAN.md) for the build phases and current status.
 
 ## Dev quickstart

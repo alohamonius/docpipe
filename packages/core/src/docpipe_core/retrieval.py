@@ -150,7 +150,7 @@ class KnowledgeBaseClient:
         Reranking runs under the **KB service role**, not the caller — Bedrock
         assumes ``<prefix>-kb-role`` for the rerank step, so that role needs
         ``bedrock:Rerank`` plus ``InvokeModel`` on the rerank model (see
-        ``pulumi/components/kb.py``; a 403 here names the KB role, not you).
+        ``infra/components/kb.py``; a 403 here names the KB role, not you).
 
         ``min_evidence`` maps to a Bedrock retrieval filter on the
         ``maxEvidence`` sidecar attribute, so the filtering happens in the

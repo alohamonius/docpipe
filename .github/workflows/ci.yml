@@ -27,5 +27,5 @@ jobs:
         with:
           python-version: "3.12"
       # Lint only — a `pulumi preview` would need AWS credentials.
-      - run: uvx ruff check pulumi/components pulumi/__main__.py
-      - run: uvx ruff format --check pulumi/components pulumi/__main__.py
+      - run: uvx ruff check infra/components infra/__main__.py
+      - run: uvx ruff format --check infra/components infra/__main__.py

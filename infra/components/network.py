@@ -11,9 +11,8 @@ from __future__ import annotations
 
 import ipaddress
 
-import pulumi_aws as aws
-
 import pulumi
+import pulumi_aws as aws
 
 
 class Network(pulumi.ComponentResource):

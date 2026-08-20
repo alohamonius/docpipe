@@ -5,10 +5,9 @@ old Terraform stack produced — see /.env.example). Run `pulumi stack output` t
 read them after `pulumi up`.
 """
 
+import pulumi
 import pulumi_aws as aws
 from components import AuroraKnowledgeBase, Data, Iam, KnowledgeBase, Messaging, Network, Safety
-
-import pulumi
 
 cfg = pulumi.Config()
 prefix = cfg.get("namePrefix") or "docpipe-dev"

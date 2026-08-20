@@ -50,7 +50,7 @@ from docpipe_core.kb_sync import (
 )
 
 # Default location of the Pulumi program, relative to the repo root.
-_DEFAULT_PULUMI_DIR = Path(__file__).resolve().parents[2] / "pulumi"
+_DEFAULT_PULUMI_DIR = Path(__file__).resolve().parents[2] / "infra"
 
 # Written by `pnpm kb:build`; its presence is what makes a directory "a built
 # corpus" rather than "some markdown".

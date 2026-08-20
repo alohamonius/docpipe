@@ -29,9 +29,8 @@ Pulumi never reads the credential and never diffs on it.
 
 from __future__ import annotations
 
-import pulumi_aws as aws
-
 import pulumi
+import pulumi_aws as aws
 
 
 class Data(pulumi.ComponentResource):

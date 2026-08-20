@@ -5,9 +5,9 @@ sync:
 
 # PULUMI IS IN THE LINT SET, and it has to be spelled out here because CI splits
 # it into a separate job (.github/workflows/ci.yml: `python` lints packages /
-# services / scripts, `infra` lints pulumi/components + pulumi/__main__.py).
+# services / scripts, `infra` lints infra/components + infra/__main__.py).
 PY_SRC ?= packages services scripts
-INFRA_SRC ?= pulumi/components pulumi/__main__.py
+INFRA_SRC ?= infra/components infra/__main__.py
 
 fmt:
 	uv run ruff format $(PY_SRC) $(INFRA_SRC)
@@ -17,7 +17,7 @@ fmt:
 # two consecutive runs — a gate you can pass locally and fail remotely is a gate
 # people learn to ignore. The same hole reopened on the pulumi side and cost a
 # red PR: `lint` covered only $(PY_SRC), so a 107-char line added to
-# pulumi/components/kb.py by the rerank IAM grant passed every local gate and
+# infra/components/kb.py by the rerank IAM grant passed every local gate and
 # failed CI's `infra` job. A second job nobody can run locally is the same bug as
 # a second command nobody runs locally.
 #
@@ -66,14 +66,14 @@ kb-eval:
 # against that becoming a loophole is `test_the_live_check_is_reachable`, which
 # DOES run in `make test` and fails if this target or its variables disappear.
 AWS_PROFILE ?= docpipe
-LIVE_KB_ID ?= $(shell PULUMI_CONFIG_PASSPHRASE= pulumi -C pulumi stack output knowledge_base_id 2>/dev/null)
-LIVE_DS_ID ?= $(shell PULUMI_CONFIG_PASSPHRASE= pulumi -C pulumi stack output kb_data_source_id 2>/dev/null)
+LIVE_KB_ID ?= $(shell PULUMI_CONFIG_PASSPHRASE= pulumi -C infra stack output knowledge_base_id 2>/dev/null)
+LIVE_DS_ID ?= $(shell PULUMI_CONFIG_PASSPHRASE= pulumi -C infra stack output kb_data_source_id 2>/dev/null)
 kb-live-check:
 	DOCPIPE_LIVE_STACK=1 AWS_PROFILE=$(AWS_PROFILE) \
 	KNOWLEDGE_BASE_ID=$(LIVE_KB_ID) KB_DATA_SOURCE_ID=$(LIVE_DS_ID) \
 		uv run --with boto3 pytest packages/core/tests/test_kb_data_source_live.py -v
 
-# Infra targets operate on the dev stack (see pulumi/README.md for backend login).
+# Infra targets operate on the dev stack (see infra/README.md for backend login).
 #
 # The self-managed S3 backend needs a passphrase even when it is empty, and every
 # pulumi command fails without it. Empty is correct today: no secret values live
@@ -85,13 +85,13 @@ PULUMI_CONFIG_PASSPHRASE ?=
 export PULUMI_CONFIG_PASSPHRASE
 
 infra-preview:
-	cd pulumi && pulumi preview --diff
+	cd infra && pulumi preview --diff
 
 infra-up:
-	cd pulumi && pulumi up
+	cd infra && pulumi up
 
 infra-down:
-	cd pulumi && pulumi destroy
+	cd infra && pulumi destroy
 
 # The SQL half Pulumi cannot do. Between `enableAurora` and `enableAuroraKb`.
 aurora-bootstrap:

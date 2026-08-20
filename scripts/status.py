@@ -59,7 +59,7 @@ def _pulumi(*argv: str) -> Any:
     env = {**os.environ, "PATH": os.environ["PATH"] + ":" + str(Path.home() / ".pulumi/bin")}
     env.setdefault("PULUMI_CONFIG_PASSPHRASE", "")
     out = subprocess.run(
-        ["pulumi", *argv, "--cwd", str(REPO / "pulumi")],
+        ["pulumi", *argv, "--cwd", str(REPO / "infra")],
         capture_output=True,
         text=True,
         check=True,
@@ -369,7 +369,7 @@ def code_stats() -> dict:
     return {
         "core_lines": count("*.py", "packages/core/src"),
         "test_lines": count("*.py", "packages/core/tests"),
-        "infra_lines": count("*.py", "pulumi/components") + count("__main__.py", "pulumi"),
+        "infra_lines": count("*.py", "infra/components") + count("__main__.py", "infra"),
     }
 
 

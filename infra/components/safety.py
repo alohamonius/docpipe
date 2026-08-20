@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import json
 
+import pulumi
 import pulumi_aws as aws
 
-import pulumi
 from components.invocation_logging import InvocationLogging
 
 _DEFAULT_BLOCKED = (

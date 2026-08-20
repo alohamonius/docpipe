@@ -16,8 +16,8 @@ Both layers of incrementality keep re-runs cheap:
 ## Usage
 
 Config (bucket / KB id / data-source id) resolves from flags → env vars →
-`terraform output` in `infra/envs/dev`, so after `terraform apply` you only
-need `--source`:
+`pulumi stack output` on the dev stack in `infra/`, so after `make infra-up`
+you only need `--source`:
 
 ```bash
 # dry run — show the upload plan, write nothing

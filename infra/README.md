@@ -29,13 +29,15 @@ pulumi login "s3://docpipe-tfstate-<ACCOUNT_ID>/pulumi?region=us-east-1&awssdk=v
 export PULUMI_CONFIG_PASSPHRASE=""   # no secrets in config yet; set a real one before adding any
 ```
 
-(Reuses the existing state bucket under a `pulumi/` prefix. Substitute your own
-AWS account id for `<ACCOUNT_ID>`.)
+(Reuses the existing state bucket under a `pulumi/` **S3 key prefix** — that is
+a path inside the bucket, unrelated to this directory, and renaming the
+directory did not move it. Substitute your own AWS account id for
+`<ACCOUNT_ID>`.)
 
 ## Commands
 
 ```bash
-cd pulumi
+cd infra
 pulumi stack init dev            # first time only
 pulumi preview                   # dry run — VERIFY here first (see note below)
 pulumi up                        # create/update
@@ -69,8 +71,13 @@ nested config is still worth doing on the first run.
 | `docpipe:enableAurora` | `false` | Phase 5b pgvector benchmark cluster |
 | `docpipe:bedrockModelId` | `us.deepseek.r1-v1:0` | chat inference profile |
 
-## Retiring Terraform
+## Terraform, retired
 
-Once `pulumi up` succeeds, the old `infra/` (Terraform) directory is dead and
-should be removed (`git rm -r infra/`). Until then it stays as the reference the
-components were translated from.
+Done. The Terraform tree — which occupied this same `infra/` path — was deleted
+in `825aa4b` once `pulumi up` succeeded. This directory was `pulumi/` until
+2026-08-21, when it took the `infra/` name back so that all four top-level
+directories are named for their role rather than their tool.
+
+The one thing to keep straight when reading history: **`infra/` before
+2026-08-21 means Terraform, after it means Pulumi.** `git log --follow` on any
+file here traverses the rename.

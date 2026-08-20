@@ -89,7 +89,7 @@ lost (0 vectors, 0 jobs), but re-read it rather than reusing it from `.env`,
 `status.json`, or any note written before today:
 
 ```bash
-cd pulumi && pulumi stack output --json | jq '{knowledge_base_id, data_source_id, kb_source_bucket}'
+cd infra && pulumi stack output --json | jq '{knowledge_base_id, data_source_id, kb_source_bucket}'
 ```
 
 The IAM updates ride along because they are in the same stack: the `deepseek*`

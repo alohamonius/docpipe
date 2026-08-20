@@ -12,9 +12,8 @@ from __future__ import annotations
 
 import contextlib
 
-from pulumi.dynamic import CreateResult, DiffResult, Resource, ResourceProvider
-
 import pulumi
+from pulumi.dynamic import CreateResult, DiffResult, Resource, ResourceProvider
 
 # Every input whose change must force a replace. `non_filterable_metadata_keys`
 # belongs here and the omission would be silent: the provider has no `update()`,

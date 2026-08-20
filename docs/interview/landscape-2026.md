@@ -49,7 +49,7 @@ search, document ranking, and *agentic retrieval* that orchestrates query
 planning, interim response evaluation and re-ranking for multi-hop queries.
 
 **This is now the default answer to "build a RAG pipeline on AWS."** docpipe
-does not use it — `pulumi/components/kb.py` builds the custom KB with a
+does not use it — `infra/components/kb.py` builds the custom KB with a
 bring-your-own S3 Vectors index. You will be asked why. Your answer is in M2 of
 the question bank, and it is a good one: docpipe's value is precisely in the
 layers Managed KB takes over.
@@ -111,7 +111,7 @@ profile → PT. Reaching for PT first is a red flag.
   regulated claims, you are in a small minority of candidates.
 - **Model invocation logging** → S3 + CloudWatch, account-level configuration
   (docpipe sets it via a boto3 dynamic provider because pulumi-aws has no
-  resource for it — `pulumi/components/invocation_logging.py`).
+  resource for it — `infra/components/invocation_logging.py`).
 
 ## Agent frameworks — the honest comparison
 
