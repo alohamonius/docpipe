@@ -63,13 +63,19 @@ nested config is still worth doing on the first run.
 
 ## Config (`Pulumi.dev.yaml`)
 
-| Key | Default | Meaning |
-|-----|---------|---------|
-| `aws:region` | `us-east-1` | region |
-| `aws:profile` | `docpipe` | local profile (unset in CI) |
-| `docpipe:namePrefix` | `docpipe-dev` | resource name prefix |
-| `docpipe:enableAurora` | `false` | Phase 5b pgvector benchmark cluster |
-| `docpipe:bedrockModelId` | `us.deepseek.r1-v1:0` | chat inference profile |
+"Default" is what `__main__.py` falls back to when the key is absent; "dev
+stack" is what `Pulumi.dev.yaml` actually sets today. They differ on Aurora —
+the cluster is opt-in by default and the dev stack has opted in.
+
+| Key | Default | dev stack | Meaning |
+|-----|---------|-----------|---------|
+| `aws:region` | — | `us-east-1` | region |
+| `aws:profile` | — | `docpipe` | local profile (unset in CI) |
+| `docpipe:namePrefix` | `docpipe-dev` | `docpipe-dev` | resource name prefix |
+| `docpipe:enableAurora` | `false` | **`true`** | pgvector cluster + Data API + `bedrock_user` secret |
+| `docpipe:enableAuroraKb` | `false` | **`true`** | attaches the second KB. Requires `enableAurora` **and** a prior `aurora_bootstrap.py` run — `__main__.py:63` raises on the first, nothing catches the second |
+| `docpipe:bedrockModelId` | `us.deepseek.r1-v1:0` | same | **summary** model (R1 — INFERENCE_PROFILE-only, no tool use) |
+| `docpipe:chatModelId` | `deepseek.v3.2` | same | **chat/agent** model (ON_DEMAND, tool use) |
 
 ## Terraform, retired
 

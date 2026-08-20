@@ -40,25 +40,45 @@ content) via Bedrock Knowledge Bases, with citations.
   type (measured, FINDINGS.md), and the only other supported family — Cohere
   Embed v3 — caps input at 512 tokens against a corpus at p90 ≈ 2,200 tokens.
   Titan v2's 8,192 is the only fit. Do not reopen without re-measuring.
-- **Vector store = Aurora PostgreSQL + pgvector as *intended* primary; S3 Vectors
-  retained as a second KB over the same source bucket.** `min_capacity = 0` **is**
-  supported by Bedrock KB (ACU 0–16), so scale-to-zero survives; the ~15s resume
-  is accepted and hidden by pre-warming on chat-UI open. Two KBs make Phase 5b a
-  config flip (`retrieval.py` already takes `knowledge_base_id`) and double as a
-  rollback path. S3 Vectors idles at ~$0, so keeping it costs nothing.
-  **Build status: not built.** Only the S3 Vectors KB exists today; the dev stack
-  sets `enableAurora: "false"` (`infra/Pulumi.dev.yaml:8`) and flipping it to
-  true still would not produce a KB-attachable cluster — see the five gaps in
-  Phase 2. "Primary" is the target, not the deployed state.
-  **Deferred 2026-08-16 (the human's): shipping on S3 Vectors alone; Aurora
-  and the benchmark move behind shipping — see Current priority.**
-- **KB corpus = `health.studio/build/kb/`**, produced by `pnpm kb:build` — **383
-  chunk-final files + 383 `.metadata.json` sidecars** (192 prose from 20 docs,
-  191 graph; 1,686,867 B). **Not `docs/`**: that tree holds files health.studio's
-  corpus policy excludes, one of them for a safety reason. Because the corpus is
-  chunk-final, the data source runs `chunkingStrategy: NONE` — see FINDINGS.md.
+- **Vector store = two Bedrock KBs over one source bucket — Aurora PostgreSQL +
+  pgvector and S3 Vectors — differing only in the STORAGE slot.**
+  `min_capacity = 0` **is** supported by Bedrock KB (ACU 0–16), so scale-to-zero
+  survives. Two KBs make Phase 5b a config flip (`retrieval.py` already takes
+  `knowledge_base_id`) and double as a rollback path. S3 Vectors idles at ~$0,
+  so keeping it costs nothing.
+  **Build status: BOTH BUILT AND INGESTED (2026-08-20).** The dev stack sets
+  `enableAurora: "true"` and `enableAuroraKb: "true"`
+  (`infra/Pulumi.dev.yaml:17-18`). Live and verified 2026-08-21: cluster
+  `docpipe-dev-aurora` **available**, engine 16.14, min 0 / max 1 ACU, Data API
+  enabled; Aurora KB **`A44CISMRAM`** (ds `H8PN3JBXPN`) and S3 Vectors KB
+  **`JDNNGSU1JT`** (ds `U0PM4HIXGE`), both holding the same 496-chunk corpus.
+  The ~15s resume this entry used to assume was **measured at 1.32 s** on the
+  Retrieve path (FINDINGS 2026-08-20) — pre-warming on chat-UI open is
+  therefore not needed to hide it.
+  **Which store is primary is now an open question, not a locked decision** —
+  the benchmark it was waiting on came back with the store effect near zero
+  (recall 0.7879 identical; MRR 0.5634 S3 vs 0.5646 Aurora after the
+  score-inversion fix), Aurora ~2× faster warm (p50 0.523 s vs 0.960 s), and
+  the $ column plus the `hnsw.ef_search` sweep still outstanding. See Phase 5b.
+  **The 2026-08-16 deferral is spent: Aurora and the benchmark were built
+  anyway on 2026-08-20 — see Current priority.**
+- **KB corpus = `health.studio/build/kb/`**, produced by `pnpm kb:build` — **496
+  chunk-final files + sidecars** since the 2026-08-19 heading split (was 383:
+  192 prose from 20 docs, 191 graph, 1,686,867 B). Both KBs hold the
+  byte-identical 496-chunk corpus. **72 of the 496 are bibliography-only**,
+  tagged `section: "Sources"` in every sidecar, so retrieval can exclude them
+  with a metadata filter today — no rebuild needed. The corpus change measured
+  recall- and rank-neutral on the ratified key (0.7879 either way).
+  **Not `docs/`**: that tree holds files health.studio's corpus policy
+  excludes, one of them for a safety reason. Because the corpus is chunk-final,
+  the data source runs `chunkingStrategy: NONE` — see FINDINGS.md.
 
-## Current priority (set 2026-08-14, the human's)
+## Current priority (set 2026-08-14, the human's) — ⚠️ SUPERSEDED, see the end of this section
+
+> **Read the 2026-08-20/21 block at the bottom first.** Steps 1–3, 5 and most
+> of 6 are done; Aurora is built and ingested and the benchmark has reported.
+> The dated rulings below are kept because they record *why* the order was what
+> it was — they are history, not the current instruction.
 
 **The measured decision is the deliverable, so Phase 5b comes first.** What this
 project is judged on is *"I benchmarked S3 Vectors against Aurora pgvector on the
@@ -90,7 +110,13 @@ Execution order, and what each step is actually blocked on:
    `metadataConfiguration`, so nothing is non-filterable and the 2 KB cap bites).
    Land the consumer half before or with the producer half, never after.
 5. **Aurora** — the five gaps in Phase 2, then a second KB over the same bucket.
+   ✅ **done 2026-08-20** — all five closed, three applies run, KB `A44CISMRAM`
+   ACTIVE, 496/496 ingested.
 6. **Measure** — recall@k / MRR / p50 / p95 / $, plus the `hnsw.ef_search` sweep.
+   ◐ **mostly done 2026-08-20** — recall, MRR and warm p50/p95 measured on both
+   stores, single-shot and agentic. **Still open: the $ column and the
+   `ef_search` sweep** (which needs a direct-SQL harness — Bedrock issues its
+   own sessions, so the sweep cannot reach the shipped Retrieve path).
 
 > **Order corrected 2026-08-14 (human ruling).** Steps 1–4 were 2–4 then 1: the
 > corpus reshape led, on the argument that it was "free before the first ingest".
@@ -113,6 +139,30 @@ Execution order, and what each step is actually blocked on:
 > as designed it needs non-filterable metadata the live S3 index cannot add
 > without a rebuild. conn-04/chain-03 phrasing fixes are content-side in
 > health.studio, unblocked anytime.
+
+> **Overtaken by events 2026-08-20/21.** The deferral above did not hold: steps
+> 5 and 6 ran anyway. Aurora was built and ingested (496/496) on 2026-08-20 and
+> the benchmark produced the headline numbers — so the ordering question it
+> settled is moot, and this section no longer describes what is being worked on.
+>
+> **What the benchmark actually returned is the reason to re-plan rather than
+> resume:** the store barely matters. Recall is identical across stores
+> (0.7879), MRR within noise (0.5634 S3 / 0.5646 Aurora, and only after finding
+> that Bedrock's RDS path returns cosine *distance* as score sorted
+> worst-first), and every agentic row lands 0.89–0.95 on either store in any
+> search mode. **The retrieval loop is the effect; the store is not.** Aurora's
+> one clear win is warm latency (~2×) and the exhibits only it can produce
+> (`ef_search` sweep, near-duplicate detection).
+>
+> **Therefore the remaining Phase 5b work is not "more benchmark".** What is
+> left that changes an outcome: the **$ cost column**, the **`ef_search`
+> sweep** (needs a direct-SQL harness), and the measured run that FINDINGS'
+> six-run entry pointed at — **verbatim query as tool call 1, then
+> reformulate**, since single-shot ∪ agentic = 61/61 answerable but neither
+> strategy alone reaches it. Then Phase 3, where the agent ships.
+>
+> Still genuinely open and unaffected by any of this: the bibliography move
+> (step 4) and the S3-side reranker/abstention path from the 2026-08-16 ruling.
 
 > **Revised 2026-08-19 (human ruling): Aurora is must-have — unparked.** The
 > 2026-08-16 deferral inverts: the three Aurora applies, `search_type` in
@@ -416,7 +466,7 @@ artifact.
       sweep cannot reach the shipped Retrieve path — it needs a direct-SQL
       harness, and the two curves must be labeled as different instruments.
 - [ ] Also cheap and only possible in Aurora: near-duplicate detection across the
-      corpus (`WHERE a.embedding <=> b.embedding < 0.15`) — answers "are my 383
+      corpus (`WHERE a.embedding <=> b.embedding < 0.15`) — answers "are my 496
       chunks actually distinct?", a question the Retrieve API cannot express.
 - [ ] **Retrieval-strategy matrix (added 2026-08-20)** — one corpus, one
       ratified key, every strategy a row. Single-shot rows are done (above);

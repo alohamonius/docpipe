@@ -1648,3 +1648,61 @@ to EKS/Helm/IRSA and "Phase 4" when PLAN.md Phase 5 has compute as an open
 decision with **Lambda as the default recommendation** and EKS discouraged at
 ~$73/mo, and `PLAN.md`'s Phase 6 checklist still asked for a
 `terraform destroy` clean-pass.
+
+## 2026-08-21 — PLAN's "locked decisions" had drifted 5 days behind the deployed stack, and the drift was invisible because the phase sections were right
+
+Reconciling PLAN.md against the live stack turned up a specific failure mode
+worth naming, because it will recur.
+
+**The stale claims were all in the summary layer, not the detail layer.**
+Phase 2 and Phase 5b were accurate — Phase 2 already said *"Done 2026-08-20:
+cluster `docpipe-dev-aurora`, KB `A44CISMRAM` ACTIVE, ds `H8PN3JBXPN`"*, and
+Phase 5b carried the full benchmark table. Meanwhile the **Locked decisions**
+block at the top still read **"Build status: not built. Only the S3 Vectors KB
+exists today; the dev stack sets `enableAurora: 'false'`"**, and *Current
+priority* still deferred Aurora behind shipping per the 2026-08-16 ruling.
+
+Verified against reality instead of against the document
+(`AWS_PROFILE=docpipe`, 2026-08-21):
+
+| claim in the summary layer | actual |
+|---|---|
+| `enableAurora: "false"` | `"true"`, and `enableAuroraKb: "true"` — `Pulumi.dev.yaml:17-18` |
+| "not built" | cluster **available**, engine 16.14, min 0 / max 1 ACU, Data API on |
+| "only the S3 Vectors KB exists" | two KBs: `JDNNGSU1JT` (S3) and `A44CISMRAM` (Aurora) |
+| "~15s resume … hidden by pre-warming" | **1.32 s** measured on the Retrieve path (2026-08-20) |
+| corpus "383 chunk-final files" | **496** since the 2026-08-19 heading split |
+
+**Why nobody noticed:** each phase section was updated *in place* by the work
+that completed it, which is exactly right — but nothing updates a summary
+written months earlier that restates the same facts. **A document that states a
+fact twice will drift at whichever copy is furthest from the work.** The
+mitigation used here: the top block now carries a dated verification line and
+points at Phase 5b rather than re-deciding, and `Current priority` got a
+`⚠️ SUPERSEDED` marker in the *heading* — the correction previously would have
+been 40 lines below the stale instruction.
+
+**Retracted in place, not rewritten:** the 2026-08-14 and 2026-08-16 ruling
+blocks are kept verbatim — they record *why* the order was chosen — with a
+2026-08-20/21 "Overtaken by events" block appended. Same for
+`docs/kb-data-status.md`: its `160 of 383` / `172 of 383` histograms are left
+as measured, because they are a point-in-time analysis and rewriting the
+numerators would falsify it; only its banner now says the corpus is 496.
+
+**The substantive finding hiding under the stale status**, now promoted into
+the decision block: the benchmark the deferral was protecting has *already
+reported*, and it dissolved the question it was asked to settle. Recall
+identical across stores (0.7879), MRR within noise (0.5634 / 0.5646), agentic
+0.89–0.95 on either store in any mode. **The retrieval loop is the effect; the
+store is not.** So "Aurora vs S3 Vectors as primary" is no longer a locked
+decision awaiting evidence — it is an open question whose evidence came back
+"mostly doesn't matter", leaving warm latency (~2×) and the Aurora-only
+exhibits as the real differentiators. What remains in Phase 5b is the $ column,
+the `ef_search` sweep, and the verbatim-then-reformulate run — not more
+store-vs-store.
+
+Cost line corrected too: the README's "nothing deployed today has a standing
+cost" stopped being true the moment Aurora came on. `min_capacity = 0` pauses
+ACU billing but not storage or backup — **~$0.12/mo**, not $0. (Cost Explorer
+month-to-date still rounds to $0 across every service, but the cluster is two
+days old and CE lags; the design figure is the one to plan against.)

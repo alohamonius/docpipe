@@ -69,10 +69,17 @@ Vectors live in **S3 Vectors** (not OpenSearch Serverless) — serverless and
 near-zero cost at rest, which keeps the whole chat path permanently
 deployable.
 
-This is the KB that exists today. A **second** Knowledge Base over the same
-source bucket, backed by Aurora PostgreSQL + pgvector, is the intended primary
-and is not built yet — the two are the subject of the benchmark that is this
-project's headline deliverable (`PLAN.md`, Phase 5b).
+A **second** Knowledge Base sits over the same source bucket, backed by
+**Aurora PostgreSQL + pgvector** — built and ingested 2026-08-20, both KBs
+holding the same 496-chunk corpus and differing only in the storage slot. The
+two are the subject of the benchmark that is this project's headline
+deliverable (`PLAN.md`, Phase 5b).
+
+Its first result: **the store barely matters.** Recall is identical (0.7879),
+MRR within noise (0.5634 S3 Vectors / 0.5646 Aurora), and agentic retrieval
+lands 0.89–0.95 on either store in any search mode — the retrieval *loop* is
+the effect, not the store. Aurora's clear wins are warm latency (~2×: p50
+0.523 s vs 0.960 s) and the exhibits only a real database can produce.
 
 ### 3. Summaries — asynchronous, decoupled by a queue
 
@@ -195,19 +202,22 @@ failing the run. Both files are gitignored; regenerate rather than commit.
 ## Cost notes
 
 The foundation is designed to cost **~$0 at rest** — and *at rest* is doing
-real work in that sentence: it holds because Aurora is currently gated off
-(`enableAurora: "false"`). When Aurora comes on for the Phase 5b benchmark,
-`min_capacity = 0` pauses **ACU billing** but not storage or backup, so the
-floor becomes ~$0.12/mo rather than $0. Small, but not zero — quoted honestly
-because the whole point of Phase 5b is a cost column nobody has to trust.
+real work in that sentence. **Aurora has been on since 2026-08-20**
+(`enableAurora: "true"`), so the floor is no longer $0: `min_capacity = 0`
+pauses **ACU billing** but not storage or backup, putting it at **~$0.12/mo**.
+Small, but not zero — quoted honestly because the whole point of Phase 5b is a
+cost column nobody has to trust. (Month-to-date across every service still
+rounds to $0, but the cluster has only existed for two days and Cost Explorer
+lags, so the design figure is the one to plan against, not that reading.)
 
 There is deliberately **no NAT gateway** — nothing needs VPC egress (the chat
 Lambda runs outside the VPC; the KB is serverless S3 Vectors; Aurora uses the
 RDS Data API). The VPC, subnets, gateway endpoints, DynamoDB (on-demand), SQS,
 S3, and S3 Vectors are all free or pay-per-use at rest.
 
-Nothing deployed today has a standing cost. The sync chat path (API Gateway +
-Lambda + Bedrock + DynamoDB + KB) can stay up permanently; `make infra-down`
+The only standing cost today is Aurora's ~$0.12/mo of storage and backup —
+everything else is free or pay-per-use at rest. The sync chat path (API Gateway
++ Lambda + Bedrock + DynamoDB + KB) can stay up permanently; `make infra-down`
 tears down everything when idle. Worker compute (Phase 5) is still an open
 decision — EKS would be the one always-on cost (~$73/mo), which is why Lambda
 is the default recommendation.

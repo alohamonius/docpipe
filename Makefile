@@ -42,7 +42,9 @@ status:
 # Score the live KB against health.studio's held-out question set — the number
 # that makes 04-embedding-payload and 05-chunk-shape report a signed delta
 # instead of an opinion. One retrieval call per question (63 today), so it
-# costs real money and needs a live index: nothing has been ingested yet.
+# costs real money. Both KBs have held the 496-chunk corpus since 2026-08-20,
+# so this runs for real — point KB_ID at JDNNGSU1JT (S3 Vectors) or A44CISMRAM
+# (Aurora); the eval path is store-agnostic.
 # Refuses an unratified answer key; pass DRY=--dry-run to rehearse the harness.
 QUESTIONS ?= ../health.studio/apps/web/src/lib/kb/eval/questions.json
 KB_ID ?=
