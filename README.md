@@ -127,12 +127,26 @@ worker + Aurora side is torn down between sessions.
 
 ## Repo layout
 
+The same taxonomy as a TS monorepo's `packages/` + `apps/`, with the runnable
+half split by *who runs it* — that split is the load-bearing rule:
+
 ```
-packages/core/     docpipe-core: models, storage, queue, Bedrock chat +
-                   summarization clients, observability. Reused everywhere.
-services/api/      Lambda handlers behind API Gateway.
-services/worker/   SQS consumer for async summaries (compute TBD — see PLAN).
-pulumi/            Pulumi (Python). One component per concern, dev stack.
+packages/core/     the library ("packages/"): models, storage, queue, Bedrock
+                   chat/summarization/agent clients, retrieval, eval scoring,
+                   corpus sync. Installed, typed, unit-tested; src layout so
+                   tests can only import the installed package. All logic
+                   lives here — nothing below is allowed to get clever.
+services/          the deployables ("apps/"): each dir ships as a unit.
+                   kb_sync (corpus sync CLI) today; api (Lambda) and worker
+                   (SQS consumer) land in Phase 3. Thin shells over core.
+scripts/           operator CLIs — run from a laptop, never deployed:
+                   kb_eval, kb_agentic_eval, aurora_bootstrap, status.
+                   Also thin shells over core; if a script grows logic,
+                   the logic moves into core with tests (see agent.py).
+pulumi/            infrastructure as code, quarantined: one component per
+                   concern, own CI job, no imports in either direction
+                   between it and the Python packages.
+docs/              runbooks, committed baselines/reports, decision records.
 ```
 
 ## Infra / secrets split
