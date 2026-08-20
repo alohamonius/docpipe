@@ -297,3 +297,52 @@ def test_search_type_typo_fails_before_any_request() -> None:
     with pytest.raises(ValueError, match="search_type"):
         KnowledgeBaseClient("kb-123", agent_runtime_client=fake).retrieve("q", search_type="hybrid")
     assert fake.calls == []
+
+
+# ── The RDS inverted-score correction (measured 2026-08-20) ────────────────
+
+
+def _worst_first() -> list[dict[str, Any]]:
+    """What an Aurora/RDS KB actually returns: score = cosine distance,
+    ordered descending — i.e. the least similar chunk first."""
+    return [
+        kb_result("worst", uri="s3://b/corpus/worst.md", score=0.83),
+        kb_result("middle", uri="s3://b/corpus/middle.md", score=0.80),
+        kb_result("best", uri="s3://b/corpus/best.md", score=0.77),
+    ]
+
+
+def test_semantic_score_is_distance_reorders_ascending() -> None:
+    fake = FakeAgentRuntime(_worst_first())
+    client = KnowledgeBaseClient(
+        "kb-123", agent_runtime_client=fake, semantic_score_is_distance=True
+    )
+    passages = client.retrieve("q", rerank=False)
+    assert [p.text for p in passages] == ["best", "middle", "worst"]
+
+
+def test_the_correction_leaves_hybrid_alone() -> None:
+    """HYBRID scores are fusion ranks, higher-is-better on both stores —
+    re-sorting them ascending would invert a correct list."""
+    fake = FakeAgentRuntime(_worst_first())
+    client = KnowledgeBaseClient(
+        "kb-123", agent_runtime_client=fake, semantic_score_is_distance=True
+    )
+    passages = client.retrieve("q", rerank=False, search_type="HYBRID")
+    assert [p.text for p in passages] == ["worst", "middle", "best"]
+
+
+def test_the_correction_leaves_reranked_results_alone() -> None:
+    fake = FakeAgentRuntime(_worst_first())
+    client = KnowledgeBaseClient(
+        "kb-123", agent_runtime_client=fake, semantic_score_is_distance=True
+    )
+    passages = client.retrieve("q", rerank=True)
+    assert [p.text for p in passages] == ["worst", "middle", "best"]
+
+
+def test_the_default_never_reorders() -> None:
+    """S3 Vectors orders correctly; a silent re-sort there would be a new bug."""
+    fake = FakeAgentRuntime(_worst_first())
+    passages = KnowledgeBaseClient("kb-123", agent_runtime_client=fake).retrieve("q", rerank=False)
+    assert [p.text for p in passages] == ["worst", "middle", "best"]

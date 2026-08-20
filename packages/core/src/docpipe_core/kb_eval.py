@@ -210,6 +210,10 @@ class EvalReport(BaseModel):
     # run pinned it — a hybrid score compared against a semantic baseline must
     # say so on its face.
     search_type: str | None = None
+    # True when the client re-sorted the RDS semantic path (see
+    # KnowledgeBaseClient.semantic_score_is_distance) — a corrected-ordering
+    # score and a raw one are different experiments.
+    semantic_score_is_distance: bool = False
     knowledge_base_id: str
     question_set: dict[str, Any]
     overall: StratumScore
@@ -317,6 +321,7 @@ def score_question_set(
         rerank=rerank,
         rerank_pool=rerank_pool if rerank else None,
         search_type=search_type,
+        semantic_score_is_distance=getattr(client, "semantic_score_is_distance", False),
         knowledge_base_id=client.knowledge_base_id,
         question_set={
             "version": question_set.version,

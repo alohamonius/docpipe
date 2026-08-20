@@ -396,11 +396,16 @@ artifact.
 - [x] Both KBs live over the same `corpus/` prefix; identical Titan v2 @ 1024
       — live 2026-08-20, both verified holding the 496-chunk corpus
 - [x] Golden set: the ratified 66-question key (v2, 2026-08-17) serves this
-- [x] **recall@k / MRR per store — measured 2026-08-20** (FINDINGS entry,
+- [x] **recall@k / MRR per store — measured 2026-08-20** (FINDINGS entries,
       reports in `docs/baselines/2026-08-20-*`): recall 0.7879 identical on
-      both; MRR — S3 Vectors 0.5634, Aurora semantic **0.3172** (the anomaly
-      to chase), Aurora HYBRID 0.5331; S3 Vectors rejects HYBRID outright.
-      Latency (p50/p95, cold-start) and the $ cost column remain.
+      both; MRR — S3 Vectors 0.5634, Aurora semantic 0.5646 *after* the
+      score-inversion fix (Bedrock's RDS path returns cosine distance as
+      score, sorted worst-first — found, fixed client-side via
+      `semantic_score_is_distance`, worth an AWS case), Aurora HYBRID 0.5331
+      (net negative vs healthy semantic on this key); S3 Vectors rejects
+      HYBRID outright. **Warm latency measured too: Aurora p50 0.523 s /
+      p95 0.873 s ≈ 2× faster than S3 Vectors 0.960 / 1.797.** Cold-start
+      sample and the $ cost column remain.
 - [ ] **The graph only Aurora can produce: sweep `hnsw.ef_search`** (10 / 40 /
       100 / 200 — a session-level `SET`, no rebuild) and plot recall@4 against
       p95 latency. S3 Vectors can only ever be one opaque point on that curve.

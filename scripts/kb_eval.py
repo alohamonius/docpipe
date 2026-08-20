@@ -75,6 +75,13 @@ def main() -> int:
         help="pin overrideSearchType; omit to let the store decide (the pre-Aurora "
         "baselines were all taken with it omitted)",
     )
+    parser.add_argument(
+        "--semantic-score-is-distance",
+        action="store_true",
+        help="Aurora/RDS KBs only: Bedrock returns score = cosine distance on the raw "
+        "semantic path and orders worst-first (measured 2026-08-20); this re-sorts "
+        "ascending client-side and the report records it",
+    )
     parser.add_argument("--profile", default=PROFILE)
     parser.add_argument("--region", default=REGION)
     args = parser.parse_args()
@@ -82,7 +89,11 @@ def main() -> int:
     question_set = load_question_set(args.questions)
     session = boto3.Session(profile_name=args.profile, region_name=args.region)
     runtime = session.client("bedrock-agent-runtime")
-    client = KnowledgeBaseClient(args.kb_id, agent_runtime_client=runtime)
+    client = KnowledgeBaseClient(
+        args.kb_id,
+        agent_runtime_client=runtime,
+        semantic_score_is_distance=args.semantic_score_is_distance,
+    )
 
     try:
         report = score_question_set(

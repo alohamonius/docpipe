@@ -1408,10 +1408,62 @@ What this says:
    GIN `to_tsvector` index earns its keep (MRR +0.216 over Aurora semantic),
    and S3 Vectors refuses the mode outright, settling the "still unverified"
    note in `retrieval.py`'s docstring.
-4. Ranking champion today: S3 Vectors raw (MRR 0.5634), with Aurora HYBRID
-   0.03 behind. The decision layer (rerank over widened pool, ~0.96 measured
-   ceiling) sits above both and was not in these runs.
+4. ~~Ranking champion today: S3 Vectors raw (MRR 0.5634), with Aurora HYBRID
+   0.03 behind.~~ **Superseded same day** — the Aurora semantic number was an
+   inverted-ordering artifact; corrected, the stores tie (see the score-
+   inversion entry below), and hybrid's "recovery" was rescuing the broken
+   order, not beating healthy semantic. The decision layer (rerank over
+   widened pool, ~0.96 measured ceiling) sits above both and was not in
+   these runs.
 
 All four runs exit 1 by design: the not-covered stratum still returns
 confabulation magnets (abstention 0.0, n=5) — unchanged from the known gap-04
 class, and hoisted `forbidden_violations` is doing its job.
+
+## 2026-08-20 — "wtf with aurora" solved: Bedrock's RDS path returns cosine DISTANCE as score and sorts worst-first
+
+The MRR anomaly from the benchmark entry above is a Bedrock service bug on the
+RDS storage path, pinned to six decimal places:
+
+1. **Symptom, from the committed reports alone (no AWS calls):** 65/66
+   questions return the identical top-5 set from both stores; **63/66 in
+   exactly reversed order.** Ranks mirror (1↔5, 2↔4).
+2. **Ingestion exonerated:** the stored vectors for the same chunk, pulled
+   from Postgres (Data API) and from S3 Vectors (`get_vectors`), are
+   bit-identical — cosine 1.000000, unit norm, 1024 dims.
+3. **Ground truth:** embedding the query with Titan v2 directly:
+   `cos(query, pain-science--03) = 0.227910`, `cos(query, red-flags--04) =
+   0.167616`. S3 Vectors reports `(1+cos)/2` (0.613985, 0.583809 — exact) and
+   orders correctly. **Aurora reports `1 − cos` — the cosine distance itself
+   (0.772090, 0.832384 — exact) — and sorts descending: most-distant first.**
+4. The candidate *set* is the true top-k (that is why recall tied at 0.7879);
+   only the response ordering is inverted. HYBRID (RRF fusion scores,
+   `0.500000` at rank 1) and reranked lists order correctly. Worth an AWS
+   support case; nothing in our config causes it.
+
+**Fix:** `KnowledgeBaseClient(semantic_score_is_distance=True)` re-sorts the
+raw semantic path ascending, touches nothing else (4 unit tests pin the
+scope). `--semantic-score-is-distance` on the eval CLI; the report records it.
+
+**Corrected numbers** (`docs/baselines/2026-08-20-aurora-496-scorefix.json`):
+Aurora semantic **0.7879 / MRR 0.5646** vs S3 Vectors 0.7879 / 0.5634 — the
+stores are equivalent on semantic ranking, exactly as identical embeddings
+demand. Two honest revisions to the entry above: the "ranking champion" is a
+tie, and **HYBRID (0.7727 / 0.5331) is a slight net NEGATIVE against healthy
+semantic on this golden set** — its apparent rescue was measured against the
+inverted ordering. The lexical-channel hypothesis did not show a net win at
+k=5; hybrid remains the tool for entity-heavy misses, to be judged per-miss,
+not a default.
+
+**Latency, warm (2 passes over the 66 questions, k=5, one client):**
+
+| | p50 | p95 | mean | n |
+|---|---|---|---|---|
+| Aurora (awake) | **0.523 s** | **0.873 s** | 0.568 s | 131 |
+| S3 Vectors | 0.960 s | 1.797 s | 1.033 s | 130 |
+
+Aurora is ~2× faster warm at both percentiles. S3 Vectors also threw one
+`ThrottlingException` at ~1 rps — its Retrieve rate ceiling is low enough to
+matter for a fleet. Cold start (>5 min idle, min-ACU 0 resume) measured
+separately below. Instrument: `.scratch/kb_latency.py` (gitignored; promote
+to `scripts/` if it should run in a gate).

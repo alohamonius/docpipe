@@ -81,8 +81,27 @@ class RetrievedPassage(BaseModel):
 
 
 class KnowledgeBaseClient:
-    def __init__(self, knowledge_base_id: str, agent_runtime_client: Any = None) -> None:
+    def __init__(
+        self,
+        knowledge_base_id: str,
+        agent_runtime_client: Any = None,
+        *,
+        semantic_score_is_distance: bool = False,
+    ) -> None:
+        """``semantic_score_is_distance``: set True for an Aurora/RDS-backed KB.
+
+        Measured 2026-08-20 (FINDINGS): on the RDS storage path Bedrock returns
+        ``score = 1 - cosine`` — the *distance*, exact to six decimals — and
+        sorts descending, so the semantic result list arrives **worst-first**
+        (63/66 golden questions came back in exactly reversed order; the
+        candidate set itself is the correct top-k). The S3 Vectors path returns
+        ``(1 + cosine)/2`` and orders correctly, and the HYBRID and rerank
+        paths order correctly on both stores — so the flag re-sorts only the
+        raw semantic path, ascending. Per-KB because score semantics are a
+        property of the storage backend, not of a call.
+        """
         self.knowledge_base_id = knowledge_base_id
+        self.semantic_score_is_distance = semantic_score_is_distance
         self._client = agent_runtime_client or boto3.client("bedrock-agent-runtime")
 
     def retrieve(
@@ -203,7 +222,13 @@ class KnowledgeBaseClient:
             retrievalQuery={"text": query},
             retrievalConfiguration={"vectorSearchConfiguration": search},
         )
-        return [_passage_of(result) for result in response.get("retrievalResults", [])]
+        passages = [_passage_of(result) for result in response.get("retrievalResults", [])]
+        # Only the raw semantic path carries the inverted RDS score (see
+        # __init__); reranked lists are ordered by Cohere and HYBRID lists by
+        # the store's fusion, both higher-is-better on both backends.
+        if self.semantic_score_is_distance and not rerank and search_type != "HYBRID":
+            passages.sort(key=lambda p: (p.score is None, p.score if p.score is not None else 0.0))
+        return passages
 
     def _rerank_model_arn(self) -> str:
         # Foundation-model ARNs are region-scoped; take the region from the
