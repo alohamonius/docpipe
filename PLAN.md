@@ -442,6 +442,13 @@ artifact.
         m-NCU-hour with a capacity floor, so it is a create→measure→destroy
         exhibit, never an always-on store, and it needs its own ruling before
         any resource exists.
+- [ ] **Playground ("tester window"), asked for 2026-08-21:** a local page
+      (thin script over `docpipe_core`, same pattern as the eval CLIs) — one
+      question box; toggles for store, single-shot vs agentic, HYBRID,
+      rerank, `min_evidence`; output shows passages with citations + scores,
+      the agent's tool-call trace, latency and token cost. Local because the
+      AWS credentials live here; once Phase 3's API exists it can point there
+      instead.
 - [ ] Writeup: a results table + "where each wins" — the README's real headline
 
 **Verified prices (AWS Price List API, us-east-1, 2026-08-13)** so the cost
