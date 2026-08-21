@@ -51,10 +51,14 @@ moto (S3) + a fake agent client — no AWS, no spend. Properties worth knowing:
 """
 
 from docpipe_core.kb_sync.corpus import (
+    CORPUS_INPUTS,
     DEFAULT_PREFIX,
+    MANIFEST_NAME,
     discover_corpus,
+    feeds_the_corpus,
     is_sidecar,
     prune_order,
+    stale_inputs,
 )
 from docpipe_core.kb_sync.guards import (
     DEFAULT_MAX_DELETE_RATIO,
@@ -73,9 +77,11 @@ from docpipe_core.kb_sync.syncer import (
 )
 
 __all__ = [
+    "CORPUS_INPUTS",
     "DEFAULT_MAX_DELETE_RATIO",
     "DEFAULT_MAX_DOC_BYTES",
     "DEFAULT_PREFIX",
+    "MANIFEST_NAME",
     "TITAN_V2_MAX_TOKENS",
     "BlastRadiusRefused",
     "CorpusSyncer",
@@ -86,6 +92,8 @@ __all__ = [
     "SyncAction",
     "SyncReport",
     "discover_corpus",
+    "feeds_the_corpus",
     "is_sidecar",
     "prune_order",
+    "stale_inputs",
 ]

@@ -44,9 +44,11 @@ from pathlib import Path
 from docpipe_core.kb_sync import (
     DEFAULT_MAX_DELETE_RATIO,
     DEFAULT_MAX_DOC_BYTES,
+    MANIFEST_NAME,
     BlastRadiusRefused,
     CorpusSyncer,
     OversizedDocRefused,
+    stale_inputs,
 )
 
 # Default location of the Pulumi program, relative to the repo root.
@@ -54,22 +56,12 @@ _DEFAULT_PULUMI_DIR = Path(__file__).resolve().parents[2] / "infra"
 
 # Written by `pnpm kb:build`; its presence is what makes a directory "a built
 # corpus" rather than "some markdown".
-_MANIFEST = "MANIFEST.json"
+_MANIFEST = MANIFEST_NAME
 
 # Files that only exist in health.studio's `docs/` tree. Finding one means the
 # operator pointed at the source docs instead of the build output. Each is
 # excluded by `corpus.ts`, and the second is excluded for safety.
 _DOCS_TREE_MARKERS = ("PM.md", "positioning-kit.md", "anatomy/referral-boundary.md")
-
-# Directories whose edits invalidate a built corpus: the prose it chunks, and
-# the TypeScript the 93 graph chunks are generated from.
-_CORPUS_INPUTS = ("docs", "apps/web/src/lib/kb", "apps/web/src/lib/body")
-
-# Test files live beside the sources they cover but contribute nothing to the
-# build output. Counting them makes the staleness warning cry wolf on every
-# test-only commit, and a warning that is usually wrong gets ignored when it
-# is right.
-_NOT_CORPUS_INPUT = (".test.ts", ".test.tsx", ".test.mts")
 
 # (flag dest, env var, pulumi stack output name)
 _SETTINGS = (
@@ -144,36 +136,6 @@ def assert_built_corpus(root: Path) -> dict:
     if not isinstance(manifest, dict):
         raise SystemExit(f"{manifest_path} is not a JSON object")
     return manifest
-
-
-def warn_if_stale(root: Path) -> list[str]:
-    """Names of corpus inputs modified after the manifest was written.
-
-    Best-effort: the corpus can be synced from anywhere, so if the health.studio
-    checkout isn't where we expect relative to ``root``, this says nothing at all
-    rather than guessing. `build/kb` is gitignored, so a stale artifact is the
-    normal state of a machine that has pulled but not rebuilt.
-    """
-    manifest_path = root / _MANIFEST
-    # build/kb → build → the repo root. A corpus can legitimately live anywhere
-    # (a tarball, /tmp, a CI artifact), so anything that isn't shaped like the
-    # health.studio checkout gets no opinion rather than a guess or a crash.
-    parents = root.resolve().parents
-    if len(parents) < 2:
-        return []
-    repo = parents[1]
-    if not all((repo / d).is_dir() for d in _CORPUS_INPUTS):
-        return []
-
-    built_at = manifest_path.stat().st_mtime
-    stale: list[str] = []
-    for directory in _CORPUS_INPUTS:
-        for path in (repo / directory).rglob("*"):
-            if path.name.endswith(_NOT_CORPUS_INPUT) or not path.is_file():
-                continue
-            if path.stat().st_mtime > built_at:
-                stale.append(str(path.relative_to(repo)))
-    return sorted(stale)
 
 
 def _print_manifest(manifest: dict, root: Path) -> None:
@@ -257,9 +219,13 @@ def build_parser() -> argparse.ArgumentParser:
         dest="max_delete_ratio",
         type=float,
         default=DEFAULT_MAX_DELETE_RATIO,
+        # The `%%` is not a typo. argparse runs help text through %-formatting,
+        # so a literal percent sign from `:.0%` makes `--help` itself raise
+        # `ValueError: unsupported format character ';'` — the whole CLI's help
+        # was unreachable, while every other invocation worked fine.
         help=(
             "refuse the sync if a prune would remove more than this fraction of the "
-            f"keys under the prefix (default {DEFAULT_MAX_DELETE_RATIO:.0%}; 1.0 disables)"
+            f"keys under the prefix (default {DEFAULT_MAX_DELETE_RATIO:.0%}%; 1.0 disables)"
         ),
     )
     parser.add_argument(
@@ -283,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
 
     manifest = assert_built_corpus(root)
     _print_manifest(manifest, root)
-    if stale := warn_if_stale(root):
+    if stale := stale_inputs(root, manifest):
         shown = ", ".join(stale[:5])
         more = f" (+{len(stale) - 5} more)" if len(stale) > 5 else ""
         print(

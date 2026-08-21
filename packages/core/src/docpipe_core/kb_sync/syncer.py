@@ -10,6 +10,7 @@ Two AWS clients here, deliberately different — easy to conflate:
 from __future__ import annotations
 
 import hashlib
+import random
 import time
 from collections.abc import Callable
 from enum import StrEnum
@@ -17,9 +18,9 @@ from pathlib import Path
 from typing import Any
 
 import boto3
-from botocore.exceptions import ClientError
 from pydantic import BaseModel
 
+from docpipe_core.aws import with_backoff
 from docpipe_core.kb_sync.corpus import (
     _SIDECAR_SUFFIX,
     DEFAULT_PREFIX,
@@ -42,10 +43,6 @@ _JSON_CONTENT_TYPE = "application/json"
 _TERMINAL_STATUSES = frozenset({"COMPLETE", "FAILED", "STOPPED"})
 # Set locally when we stop waiting; never returned by Bedrock.
 _TIMEOUT_STATUS = "TIMEOUT"
-
-# HeadObject on a missing key surfaces as one of these error codes (HEAD has no
-# body, so S3 returns bare "404"; moto/other paths may say NoSuchKey/NotFound).
-_MISSING_OBJECT_CODES = frozenset({"404", "NoSuchKey", "NotFound"})
 
 
 class SyncAction(StrEnum):
@@ -111,6 +108,29 @@ class SyncReport(BaseModel):
         return [d for d in self.docs if d.sidecar]
 
 
+def _indexed(stats: dict[str, Any]) -> int | None:
+    """Documents this job wrote: new PLUS modified.
+
+    Bedrock reports those as two separate counters and reading only
+    `numberOfNewDocumentsIndexed` understates the job — silently, and worst in
+    the commonest case. Measured on job FWU5IEPVHS (2026-08-21): 89 new + 7
+    modified = 96, exactly the 96 changed documents the upload plan predicted,
+    while the report printed `indexed=89`. A sync that only *edits* existing
+    chunks reports `indexed=0` under the old reading — indistinguishable from
+    an ingestion that did nothing at all.
+
+    Returns None only when Bedrock supplied neither counter, so "absent" stays
+    distinguishable from "zero".
+    """
+    new, modified = (
+        stats.get("numberOfNewDocumentsIndexed"),
+        stats.get("numberOfModifiedDocumentsIndexed"),
+    )
+    if new is None and modified is None:
+        return None
+    return (new or 0) + (modified or 0)
+
+
 def _digest(data: bytes) -> str:
     # Change detection only — not security. Matches S3's ETag for single-part,
     # SSE-S3 (AES256) objects, which is exactly what the kb module provisions.
@@ -129,6 +149,8 @@ class CorpusSyncer:
         agent_client: Any = None,
         prefix: str = DEFAULT_PREFIX,
         logger: Any = None,
+        max_retries: int = 4,
+        rng: Callable[[], float] = random.random,
     ) -> None:
         self.bucket = source_bucket
         self.knowledge_base_id = knowledge_base_id
@@ -137,6 +159,9 @@ class CorpusSyncer:
         self._s3 = s3_client or boto3.client("s3")
         self._agent = agent_client or boto3.client("bedrock-agent")
         self._log = logger or get_logger(__name__)
+        # Same shape as KnowledgeBaseClient: injected so tests never sleep.
+        self._max_retries = max_retries
+        self._rng = rng
 
     def key_for(self, root: Path, path: Path) -> str:
         """S3 key = prefix + the file's path relative to the corpus root."""
@@ -148,7 +173,11 @@ class CorpusSyncer:
         Refuses (``OversizedDocRefused``) when any document is likely past the
         embedding model's token cap, naming every offender at once rather than
         failing them one ingestion at a time.
+
+        The remote ETags are read ONCE, up front, rather than per file — see
+        ``list_remote_etags``.
         """
+        remote = self.list_remote_etags()
         planned: list[PlannedDoc] = []
         oversized: list[tuple[str, int]] = []
         for path in discover_corpus(root):
@@ -157,9 +186,7 @@ class CorpusSyncer:
             key = self.key_for(root, path)
             if not is_sidecar(path) and len(data) > max_doc_bytes:
                 oversized.append((str(path), len(data)))
-            action = (
-                SyncAction.SKIPPED if self._matches_remote(key, digest) else SyncAction.UPLOADED
-            )
+            action = SyncAction.SKIPPED if remote.get(key) == digest else SyncAction.UPLOADED
             planned.append(
                 PlannedDoc(
                     path=str(path),
@@ -174,13 +201,31 @@ class CorpusSyncer:
             raise OversizedDocRefused(oversized, max_doc_bytes)
         return planned
 
-    def list_remote_keys(self) -> set[str]:
-        """Every key currently under the prefix. Paginated — the corpus is 766+."""
-        keys: set[str] = set()
+    def list_remote_etags(self) -> dict[str, str]:
+        """Every key under the prefix → its ETag. Paginated; the corpus is 1170+.
+
+        ListObjectsV2 already carries the ETag of every object it names, so
+        asking for one again per key buys nothing and costs a round trip. It
+        used to: `plan` called `head_object` per file, which at 585 chunks plus
+        their sidecars was 1,170 sequential HEADs. Measured against the live
+        dev bucket, 2026-08-21: **>4m48s before, 3.5s after, byte-identical
+        upload plan** (191 upload / 979 skip / 0 orphans).
+
+        ETag parity is exact, not approximate: LIST and HEAD report the same
+        value, including the "-N" multipart suffix that never matches a plain
+        MD5. So the comparison below fails the same way it always did — toward
+        re-uploading, never toward a false "skip".
+        """
+        etags: dict[str, str] = {}
         paginator = self._s3.get_paginator("list_objects_v2")
         for page in paginator.paginate(Bucket=self.bucket, Prefix=self.prefix):
-            keys.update(obj["Key"] for obj in page.get("Contents", []))
-        return keys
+            for obj in page.get("Contents", []):
+                etags[obj["Key"]] = obj.get("ETag", "").strip('"')
+        return etags
+
+    def list_remote_keys(self) -> set[str]:
+        """Every key currently under the prefix. Paginated — the corpus is 1170+."""
+        return set(self.list_remote_etags())
 
     def plan_prune(self, root: Path | str) -> list[PrunedKey]:
         """Remote minus local: what a sync would delete, deleting nothing.
@@ -204,17 +249,6 @@ class CorpusSyncer:
             [PrunedKey(key=k, sidecar=k.endswith(_SIDECAR_SUFFIX)) for k in orphans],
             len(remote),
         )
-
-    def _matches_remote(self, key: str, digest: str) -> bool:
-        try:
-            head = self._s3.head_object(Bucket=self.bucket, Key=key)
-        except ClientError as exc:
-            if exc.response.get("Error", {}).get("Code") in _MISSING_OBJECT_CODES:
-                return False
-            raise
-        # Multipart uploads carry a "-N" suffix and won't match a plain MD5 —
-        # that just means we re-upload (safe), never a false "skip".
-        return head.get("ETag", "").strip('"') == digest
 
     def sync(
         self,
@@ -324,9 +358,21 @@ class CorpusSyncer:
         sleep: Callable[[float], None],
         clock: Callable[[], float],
     ) -> IngestionOutcome:
-        started = self._agent.start_ingestion_job(
-            knowledgeBaseId=self.knowledge_base_id,
-            dataSourceId=self.data_source_id,
+        # An Aurora-backed KB at `min_capacity = 0` auto-pauses when idle, and
+        # `StartIngestionJob` is very often the call that finds it asleep — a
+        # sync runs minutes after a build, long past any keep-alive. It fails
+        # as a `ValidationException`, so nothing in botocore's own retry
+        # configuration treats it as transient; see `aws.is_retryable`.
+        # Measured 2026-08-22: this crashed the CLI outright, mid-run, after
+        # the upload had already happened.
+        started = with_backoff(
+            lambda: self._agent.start_ingestion_job(
+                knowledgeBaseId=self.knowledge_base_id,
+                dataSourceId=self.data_source_id,
+            ),
+            max_retries=self._max_retries,
+            sleep=sleep,
+            rng=self._rng,
         )
         job = started["ingestionJob"]
         job_id = job["ingestionJobId"]
@@ -341,7 +387,7 @@ class CorpusSyncer:
             job_id=job_id,
             status=status,
             documents_scanned=stats.get("numberOfDocumentsScanned"),
-            documents_indexed=stats.get("numberOfNewDocumentsIndexed"),
+            documents_indexed=_indexed(stats),
             documents_failed=stats.get("numberOfDocumentsFailed"),
         )
         self._log.info(
