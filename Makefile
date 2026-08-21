@@ -1,4 +1,4 @@
-.PHONY: sync fmt lint typecheck test status kb-eval kb-agentic-eval kb-live-check infra-preview infra-up infra-down aurora-bootstrap playground
+.PHONY: sync fmt lint typecheck test status kb-eval kb-agentic-eval kb-live-check infra-preview infra-up infra-down aurora-bootstrap playground graph-index
 
 sync:
 	uv sync --all-packages
@@ -94,6 +94,20 @@ infra-up:
 
 infra-down:
 	cd infra && pulumi destroy
+
+# Build the body-graph edge index from the corpus (PLAN Phase 5b, rung (a)).
+# A build artifact, gitignored like status.json — regenerate after every corpus
+# re-sync or graph expansion will traverse edges the KB no longer holds.
+# Costs nothing: pure local parse, no AWS, no LLM.
+# SOURCE defaults to the DEPLOYED corpus, not the local build: measured
+# 2026-08-21 they differ by 75 graph chunks (379 local vs 304 ingested, almost
+# all the nerve registry), and an index ahead of the KB mints hops that
+# Retrieve cannot answer.
+KB_BUCKET ?= $(shell PULUMI_CONFIG_PASSPHRASE= pulumi -C infra stack output kb_source_bucket 2>/dev/null)
+SOURCE ?= s3://$(KB_BUCKET)/corpus
+GRAPH_INDEX ?= .scratch/graph-index.json
+graph-index:
+	uv run --with boto3 python scripts/graph_index.py --source $(SOURCE) --out $(GRAPH_INDEX)
 
 # Local chat playground ("tester window", PLAN Phase 5b) — a browser page over
 # the real chat path: store toggle, single-shot vs agentic, HYBRID, rerank,

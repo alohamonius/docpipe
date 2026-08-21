@@ -149,7 +149,8 @@ services/          the deployables: each dir ships as a unit. kb_sync (corpus
                    (SQS consumer) in Phase 5. Thin shells over core.
 scripts/           operator CLIs — run from a laptop, never deployed:
                    kb_eval, kb_agentic_eval, aurora_bootstrap, status,
-                   playground (`make playground` — chat in a browser).
+                   playground (`make playground` — chat in a browser),
+                   graph_index (`make graph-index` — the body-graph edges).
                    Also thin shells over core; if a script grows logic,
                    the logic moves into core with tests (see agent.py).
 infra/             infrastructure as code, quarantined: one component per

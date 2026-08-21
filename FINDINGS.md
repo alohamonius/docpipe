@@ -1767,3 +1767,97 @@ agentic, HYBRID on Aurora (scores correctly descending — the distance-inversio
 sort is rightly skipped there), multi-turn history resolving a pronoun across
 turns, guardrail applied and reporting `guardrail_intervened` on the single-shot
 path. Warm latency ~5 s single-shot, ~18 s for a five-call agentic loop.
+
+## 2026-08-21 — the corpus was already a graph, so Graph RAG needed a parser, not a database — and Neptune priced at ~$350/mo floor
+
+Asked to add Graph RAG. Two candidate rungs in PLAN Phase 5b; both got
+investigated before anything was built, and the answer inverted the expected
+order of difficulty.
+
+**Rung (b), Neptune Analytics, priced via the Price List API (us-east-1):
+$0.03 per m-NCU-hour.**
+
+| tier | running | stopped |
+|---|---|---|
+| 16 m-NCU (smallest) | $0.48/hr ≈ **$350/mo** | $0.048/hr ≈ $35/mo |
+| 128 m-NCU | $3.84/hr ≈ **$2,765/mo** | $0.384/hr |
+
+**There is no scale-to-zero — a stopped graph still bills 10%.** Against
+Aurora's ~$0.12/mo and S3 Vectors' ~$0, that is the whole story: fine as a
+create→measure→destroy exhibit (~$1.50 for three hours at 16 m-NCU), ruinous
+if anyone forgets to destroy it. Two further blockers found while pricing:
+graph construction supports only Claude 3 Haiku / Haiku 4.5 / Nova — which
+**breaks the DeepSeek-only decision** — and with Quick create, Bedrock picks
+the graph size.
+
+**The decisive objection is not cost, though.** Bedrock GraphRAG builds its own
+graph by running an LLM over the chunks (`CHUNK_ENTITY_EXTRACTION`) to extract
+entities and relationships. Every open-source alternative (Microsoft GraphRAG,
+LightRAG, nano-graphrag) does the same thing — that inference *is* their
+indexing pipeline. Pointed at this corpus they would all discard hand-curated,
+`[VERIFIED]`, PubMed-checked, individually-graded edges and replace them with
+guesses. On health content that is a regression, not a feature.
+
+**Because the corpus already is the graph.** Measured on the deployed corpus:
+
+- **Six fields declare a node id** — `Connection group id` 245, `Structure id`
+  31, `Chain code` 11, `Nerve code` 8, `Referral source id` 5, `Joint id` 1 —
+  addressing 301 of 304 graph chunks. Matched generically, so a seventh kind
+  indexes itself.
+- **247 edges** across four sections: `in_chain` 84, `has_member` 84 (the same
+  chain edges from the other end — a free consistency check), `innervated_by`
+  56, `supplies` 23. **224 carry a star grade, 56 carry `[VERIFIED]`.**
+- **The whole index is 106 KB of JSON.** That is the number that kills every
+  "host a graph service" plan, including the Lambda one: 106 KB is a dict.
+
+**What is NOT parseable, stated so nobody re-litigates it.** Section *presence*
+is not the same as parseable edges — a mistake I made first time round by
+counting headings. `Key clinical connections` (132 files) is narrative prose
+(*"Part of the FFL bridge — right pec major → rectus abdominis → left adductor
+longus"*), and `Functional relationships` (117) names structures in prose
+rather than by id. Only bullets carrying a backtick id resolve. Those two
+sections are deliberately left alone: an inferred edge sitting next to a
+`[VERIFIED]` one, indistinguishable downstream, is worse than no edge.
+
+**A silent-failure class worth remembering.** Chain codes are UPPERCASE
+(`FFL`, `SFL`, `DFL`). A lowercase-only id pattern parsed **zero** `in_chain`
+edges across all 62 files carrying that section — no exception, no warning,
+just a relation that was quietly always empty, and a `build_report` that
+looked plausible. Fixing it took edges from 107 → 247. `make graph-index` now
+prints per-relation counts and warns on any relation at zero, and
+`test_uppercase_chain_codes_resolve` pins it.
+
+**The index must be built from the DEPLOYED corpus, not the local one.** They
+differ by 75 chunks — `../health.studio/build/kb` carries 379 graph chunks
+against 304 ingested, almost all of it the nerve registry (52 local vs 8
+live). Indexing the local tree mints hops that `Retrieve` cannot answer:
+expansion would *look* richer while retrieving less, which is the worst
+possible failure for a measurement. `make graph-index` therefore defaults to
+`s3://<kb_source_bucket>/corpus` and warns when pointed at a local path.
+
+**First A/B, live** — *"what connects the rectus abdominis to the rest of the
+body?"*, S3 Vectors, top_k 4, rerank on:
+
+| | passages | hops | input tokens |
+|---|---|---|---|
+| expansion off | 4 | — | 7,025 |
+| expansion on | 6 | 2 | 7,827 |
+
+Vector search returned four `Body Connection Graph` chunks and **never
+surfaced either fascial-line chunk**. Expansion added both — Superficial Front
+Line (★★☆) and Front Functional Line (★☆☆) — and the answer used them. That is
+the case for graph retrieval on this corpus in one example: the edge knew
+something the embedding did not.
+
+**Ordering, and why hops carry no score.** They arrive by traversal, so there
+is nothing commensurable with the seeds' vector distance. They are ordered by
+the edge's own evidence grade, then the rank of the seed they hung off, capped
+by a budget so a hub node cannot flood the context. Consequence:
+**recall@k and MRR are not comparable between expanded and unexpanded runs** —
+report the graph row as its own instrument, exactly as PLAN already requires
+for agentic `session_recall` versus single-shot MRR.
+
+Also caught by the type checker rather than at runtime: `build_graph` reused
+the name `heading` for both a `Match` and a `str` in one scope. And `budget=0`
+returned one hop, because the cap was checked after appending — the difference
+between "expansion off" and "expansion on, small budget".

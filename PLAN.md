@@ -485,15 +485,33 @@ artifact.
       - [ ] rerank rows ride the existing `RERANK=--rerank` path when the
         3 req/min Cohere quota makes a full run tolerable (~25 min, FINDINGS
         2026-08-17)
-      - [ ] **Graph RAG, two candidate rungs, in order:** (a) corpus-native
-        graph expansion — the body-graph chunks ARE an exported graph, so a
-        retriever that expands seed hits along adjacency (connection →
-        its two structure chunks) measures "does graph structure help" with
-        no new store; (b) managed Bedrock GraphRAG = a third KB on Neptune
-        Analytics — **price it via the Price List API first**; it bills per
-        m-NCU-hour with a capacity floor, so it is a create→measure→destroy
-        exhibit, never an always-on store, and it needs its own ruling before
-        any resource exists.
+      - [x] **(a) corpus-native graph expansion — BUILT 2026-08-21**
+        (`docpipe_core.graph`, `make graph-index`, `graph expand` in the
+        playground). The body-graph chunks are a typed, per-edge-graded graph
+        already: six id-declaring fields address 301 of 304 chunks, and four
+        sections yield **247 edges** (`in_chain` 84, `has_member` 84,
+        `innervated_by` 56, `supplies` 23; 224 graded, 56 `[VERIFIED]`).
+        Whole index = **106 KB of JSON** — no store, no LLM, no AWS resource.
+        First A/B on *"what connects the rectus abdominis to the rest of the
+        body?"*: vector search returned four `Body Connection Graph` chunks and
+        **never surfaced either fascial-line chunk**; expansion added both
+        (SFL ★★☆, FFL ★☆☆) for +802 input tokens. Still to do: score it
+        against the ratified key as its own instrument — recall@k and MRR are
+        **not** comparable across expanded and unexpanded runs, same rule this
+        matrix already applies to agentic `session_recall`.
+      - [ ] **(b) managed Bedrock GraphRAG on Neptune Analytics — priced
+        2026-08-21, and the ruling is: not now.** Price List API, us-east-1:
+        **$0.03 per m-NCU-hour**, smallest tier 16 m-NCU = **$0.48/hr ≈
+        $350/mo**, and a *stopped* graph still bills 10% (≈$35/mo) — there is
+        no scale-to-zero, unlike Aurora's ~$0.12/mo. Affordable only as
+        create→measure→destroy (~$1.50 for a three-hour session). Two further
+        blockers found while pricing it: graph construction supports only
+        Claude 3 Haiku / Haiku 4.5 / Nova, which **breaks the DeepSeek-only
+        decision**; and GraphRAG *infers its own graph* from the prose via
+        `CHUNK_ENTITY_EXTRACTION`, discarding the hand-verified edges rung (a)
+        traverses. Worth doing eventually as the third row — *no graph /
+        verified graph / inferred graph* — but it measures a different
+        question, and rung (a) answers ours.
 - [x] **Playground ("tester window"), asked for 2026-08-21 — built same day**
       (`scripts/playground.py` + `.html`, `make playground`). Verified live
       against both KBs: single-shot and agentic, S3 Vectors and Aurora,

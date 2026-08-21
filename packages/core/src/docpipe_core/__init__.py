@@ -9,6 +9,7 @@
 """
 
 from docpipe_core.agent import AgentSession, KbAgent, ToolCall
+from docpipe_core.graph import BodyGraph, GraphEdge, GraphHop, GraphNode, build_graph, expand
 from docpipe_core.kb_sync import (
     DEFAULT_MAX_DELETE_RATIO,
     DEFAULT_MAX_DOC_BYTES,
@@ -44,6 +45,12 @@ from docpipe_core.storage import DocumentStore, JobStore
 __version__ = "0.1.0"
 
 __all__ = [
+    "BodyGraph",
+    "GraphEdge",
+    "GraphHop",
+    "GraphNode",
+    "build_graph",
+    "expand",
     "DEFAULT_MAX_DELETE_RATIO",
     "DEFAULT_MAX_DOC_BYTES",
     "HEALTH_ASSISTANT_SYSTEM",

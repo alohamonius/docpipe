@@ -40,12 +40,17 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from docpipe_core import ChatMessage, KbAgent, KnowledgeBaseClient
+from docpipe_core import ChatMessage, KbAgent, KnowledgeBaseClient, RetrievedPassage
 from docpipe_core.agent import DEFAULT_AGENT_MODEL_ID
+from docpipe_core.graph import RELATION_SECTIONS, BodyGraph, expand
+from docpipe_core.kb_eval import chunk_key_of
+from docpipe_core.kb_sync import DEFAULT_PREFIX
 from docpipe_core.llm import ChatClient
 
 _PAGE = Path(__file__).resolve().parent / "playground.html"
 _DEFAULT_INFRA_DIR = Path(__file__).resolve().parents[1] / "infra"
+_DEFAULT_GRAPH_INDEX = Path(__file__).resolve().parents[1] / ".scratch" / "graph-index.json"
+_RELATIONS = sorted(set(RELATION_SECTIONS.values()))
 
 # (stack output name, env var) — flags override both, in resolve_config below.
 _SETTINGS = {
@@ -54,7 +59,31 @@ _SETTINGS = {
     "guardrail_id": ("guardrail_id", "GUARDRAIL_ID"),
     "guardrail_version": ("guardrail_version", "GUARDRAIL_VERSION"),
     "chat_model_id": ("chat_model_id", "CHAT_MODEL_ID"),
+    "kb_source_bucket": ("kb_source_bucket", "KB_SOURCE_BUCKET"),
 }
+
+
+@cache
+def _hop_text(bucket: str, chunk_key: str) -> str:
+    """Fetch a hop target's body from the KB source bucket.
+
+    Hops arrive as chunk keys, and a passage needs text. Reading it from the
+    same bucket the knowledge base ingests from keeps one home for the corpus
+    — the alternative, baking bodies into the index, would make it a second
+    copy that silently goes stale. Cached, so a hub node is fetched once.
+    """
+    import boto3
+
+    obj = boto3.client("s3").get_object(Bucket=bucket, Key=f"{DEFAULT_PREFIX}{chunk_key}")
+    return str(obj["Body"].read().decode("utf-8"))
+
+
+@cache
+def _load_graph(path: str) -> BodyGraph | None:
+    file = Path(path)
+    if not file.is_file():
+        return None
+    return BodyGraph.from_json(file.read_text(encoding="utf-8"))
 
 
 @cache
@@ -89,6 +118,10 @@ def resolve_config(args: argparse.Namespace) -> dict[str, str | None]:
     config.setdefault("guardrail_version", None)
     config["guardrail_version"] = config["guardrail_version"] or "DRAFT"
     config["agent_model_id"] = args.agent_model_id or DEFAULT_AGENT_MODEL_ID
+    config["graph_index"] = str(args.graph_index)
+    graph = _load_graph(str(args.graph_index))
+    config["graph_edges"] = str(len(graph.edges)) if graph else None
+    config["graph_relations"] = ",".join(_RELATIONS)
     return config
 
 
@@ -174,6 +207,52 @@ def answer(config: dict[str, str | None], req: dict[str, Any]) -> dict[str, Any]
         rerank=bool(req.get("rerank")),
         search_type=search_type,
     )
+
+    hops: list[dict[str, Any]] = []
+    if req.get("graph_expand"):
+        graph = _load_graph(str(config["graph_index"]))
+        bucket = config["kb_source_bucket"]
+        if graph is None:
+            notes.append("no graph index — run `make graph-index`")
+        elif not bucket:
+            notes.append("no kb_source_bucket resolved — cannot fetch hop bodies")
+        else:
+            found = expand(
+                passages,
+                graph,
+                chunk_key_of=chunk_key_of,
+                relations=req.get("graph_relations") or None,
+                min_evidence=req.get("graph_min_evidence"),
+                budget=max(0, min(10, int(req.get("graph_budget") or 4))),
+            )
+            for hop in found:
+                key = f"graph/{hop.node_id}.md"
+                node = graph.nodes[hop.node_id]
+                # No score: this passage arrived by traversal, not by vector
+                # similarity, and inventing one would make the two look
+                # commensurable in every downstream report.
+                passages = [
+                    *passages,
+                    RetrievedPassage(
+                        text=_hop_text(bucket, key),
+                        source=f"s3://{bucket}/{DEFAULT_PREFIX}{key}",
+                        doc_title=node.title,
+                        section=node.kind,
+                    ),
+                ]
+                hops.append(
+                    {
+                        "node_id": hop.node_id,
+                        "title": node.title,
+                        "relation": hop.relation,
+                        "evidence": hop.evidence,
+                        "verified": hop.verified,
+                        "from_seed": hop.from_seed,
+                    }
+                )
+            if not found:
+                notes.append("graph expansion found no edges from these seeds")
+
     history = [ChatMessage(role=m["role"], content=m["content"]) for m in req.get("history") or []]
     history.append(ChatMessage(role="user", content=question))
     chat = ChatClient(
@@ -195,6 +274,7 @@ def answer(config: dict[str, str | None], req: dict[str, Any]) -> dict[str, Any]
         "stop_reason": None,
         "tool_calls": [],
         "passages": [_passage_json(p) for p in passages],
+        "hops": hops,
         "notes": notes,
     }
 
@@ -253,6 +333,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--guardrail-version", dest="guardrail_version", default=None)
     parser.add_argument("--chat-model-id", dest="chat_model_id", help="else env / stack output")
     parser.add_argument("--agent-model-id", dest="agent_model_id", default=None)
+    parser.add_argument("--graph-index", type=Path, default=_DEFAULT_GRAPH_INDEX)
     parser.add_argument("--no-open", action="store_true", help="don't open a browser")
     return parser
 
@@ -269,6 +350,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  agent model    {config['agent_model_id']}")
     guardrail = config["guardrail_id"] or "— NONE RESOLVED"
     print(f"  guardrail      {guardrail} (single-shot only; agentic sends none)")
+    edges = config["graph_edges"]
+    print(f"  graph index    {edges + ' edges' if edges else '— none (run `make graph-index`)'}")
     if not (config["s3_kb_id"] or config["aurora_kb_id"]):
         print("\n  No KB id resolved — is the dev stack selected?")
         print("  Try: pulumi -C infra stack select dev")

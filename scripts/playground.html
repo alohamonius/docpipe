@@ -90,6 +90,9 @@
   button:disabled { opacity: .5; cursor: default; }
   .err { background: var(--err-soft); color: var(--err); border-color: transparent; }
   .nores { color: var(--muted); font-style: italic; }
+  .hop { font-size: 12.5px; padding: 5px 0 5px 12px; border-left: 2px solid var(--accent);
+         margin: 6px 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+  .rel { color: var(--faint); font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
   .note { font-size: 12.5px; color: var(--err); margin-top: 6px; }
   .empty { color: var(--faint); font-size: 13.5px; padding: 30px 0; }
 </style>
@@ -130,6 +133,20 @@
     </div>
     <div class="ctl check"><input type="checkbox" id="hybrid"><label for="hybrid">HYBRID</label></div>
     <div class="ctl check"><input type="checkbox" id="rerank" checked><label for="rerank">rerank</label></div>
+    <div class="ctl check"><input type="checkbox" id="graph"><label for="graph">graph expand</label></div>
+    <div class="ctl">
+      <label for="gbudget">hops</label>
+      <input type="number" id="gbudget" value="4" min="0" max="10" style="width:64px">
+    </div>
+    <div class="ctl">
+      <label for="gmin">edge ★</label>
+      <select id="gmin">
+        <option value="">any</option>
+        <option value="1">★☆☆ 1+</option>
+        <option value="2">★★☆ 2+</option>
+        <option value="3">★★★ 3</option>
+      </select>
+    </div>
     <div class="ctl check"><input type="checkbox" id="reset"><label for="reset">new thread each ask</label></div>
   </div>
 
@@ -153,8 +170,10 @@ fetch('/config').then(r => r.json()).then(c => {
   $('cfg').textContent =
     `chat ${c.chat_model_id} · agent ${c.agent_model_id}` +
     (c.guardrail_id ? ` · guardrail ${c.guardrail_id}` : ' · NO GUARDRAIL') +
+    ` · graph ${c.graph_edges ? c.graph_edges + ' edges' : 'NOT BUILT'}` +
     ` · S3 ${c.s3_kb_id || '—'} · Aurora ${c.aurora_kb_id || '—'}`;
   if (!c.aurora_kb_id) $('store').querySelector('[value=aurora]').disabled = true;
+  if (!c.graph_edges) { $('graph').disabled = true; $('graph').title = 'run `make graph-index`'; }
 }).catch(() => { $('cfg').textContent = 'config unavailable'; });
 
 const esc = s => (s ?? '').replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
@@ -174,6 +193,19 @@ function renderPassages(ps) {
         <span class="score">${p.score == null ? '—' : p.score.toFixed(4)}</span></div>
       <div class="psg-body">${esc(p.text)}</div></div>`).join('');
   return `<details><summary>${ps.length} passage${ps.length > 1 ? 's' : ''}</summary>${rows}</details>`;
+}
+
+const STARS = n => n == null ? 'ungraded' : '★'.repeat(n) + '☆'.repeat(3 - n);
+
+function renderHops(hops) {
+  if (!hops || !hops.length) return '';
+  const rows = hops.map(h => `<div class="hop">
+      <span class="mono">${esc(h.from_seed.replace(/^body-graph-/, ''))}</span>
+      <span class="rel">—[${esc(h.relation)} ${STARS(h.evidence)}${h.verified ? ' ✓VERIFIED' : ''}]→</span>
+      <span class="mono cite">${esc(h.title || h.node_id)}</span>
+    </div>`).join('');
+  return `<details open><summary>graph expansion — ${hops.length} hop${
+    hops.length > 1 ? 's' : ''} (traversed, not scored)</summary>${rows}</details>`;
 }
 
 function renderTrace(calls) {
@@ -198,6 +230,8 @@ async function ask() {
     store: $('store').value, mode: $('mode').value,
     top_k: +$('topk').value, hybrid: $('hybrid').checked, rerank: $('rerank').checked,
     min_evidence: $('minev').value === '' ? null : +$('minev').value,
+    graph_expand: $('graph').checked, graph_budget: +$('gbudget').value,
+    graph_min_evidence: $('gmin').value === '' ? null : +$('gmin').value,
   };
 
   try {
@@ -229,8 +263,8 @@ async function ask() {
     }
     const noteHtml = (d.notes || []).map(n => `<div class="note">${esc(n)}</div>`).join('');
     t.insertAdjacentHTML('beforeend',
-      `<div class="meta">${tags.join('')}</div>${noteHtml}${renderTrace(d.tool_calls)}${
-        d.mode === 'single' ? renderPassages(d.passages) : ''}`);
+      `<div class="meta">${tags.join('')}</div>${noteHtml}${renderHops(d.hops)}${
+        renderTrace(d.tool_calls)}${d.mode === 'single' ? renderPassages(d.passages) : ''}`);
 
     if (d.answer) history.push({role: 'user', content: question}, {role: 'assistant', content: d.answer});
   } catch (e) {
