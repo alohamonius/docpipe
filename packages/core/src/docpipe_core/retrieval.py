@@ -26,8 +26,9 @@ from collections.abc import Callable
 from typing import Any
 
 import boto3
-from botocore.exceptions import ClientError
 from pydantic import BaseModel
+
+from docpipe_core.aws import with_backoff
 
 # Attribute names written by health.studio's `pnpm kb:build` into each
 # `<chunk>.md.metadata.json`. Bedrock echoes them back under `metadata`.
@@ -84,32 +85,6 @@ class RetrievedPassage(BaseModel):
         return label
 
 
-_RETRYABLE_CODES = frozenset(
-    {"ThrottlingException", "ServiceUnavailableException", "ModelNotReadyException"}
-)
-
-
-def is_retryable(error: ClientError) -> bool:
-    """Transient Bedrock/RDS failures worth another attempt.
-
-    The second arm is the one that matters operationally. An Aurora-backed KB
-    at ``min_capacity = 0`` auto-pauses when idle — which is the *designed*
-    resting state, not an edge case — and the first ``Retrieve`` after that
-    comes back as a **``ValidationException``** naming the resume, not as any
-    retryable error code. Matching on the code alone therefore fails every
-    cold start, and on a scale-to-zero cluster "cold" is the normal case:
-    every first question of a session.
-
-    Defined here rather than in ``agent.py`` (which had the only copy until
-    2026-08-21) because retrieval is the layer that actually touches the
-    paused database, and ``agent.py`` already imports from this module.
-    """
-    code = error.response.get("Error", {}).get("Code", "")
-    if code in _RETRYABLE_CODES:
-        return True
-    return code == "ValidationException" and "resuming after being auto-paused" in str(error)
-
-
 class KnowledgeBaseClient:
     def __init__(
         self,
@@ -141,20 +116,7 @@ class KnowledgeBaseClient:
         self._rng = rng
 
     def _with_backoff(self, call: Callable[[], Any]) -> Any:
-        """Jittered exponential backoff — same shape and rationale as agent.py.
-
-        Sized for an Aurora resume: four retries sleep ~1+2+4+8 s, which covers
-        the auto-pause wake-up with room to spare (measured 1.32 s on the
-        Retrieve path, FINDINGS 2026-08-20).
-        """
-        for attempt in range(self._max_retries + 1):
-            try:
-                return call()
-            except ClientError as error:
-                if not is_retryable(error) or attempt == self._max_retries:
-                    raise
-                self._sleep(2**attempt + self._rng())
-        raise RuntimeError("unreachable")
+        return with_backoff(call, max_retries=self._max_retries, sleep=self._sleep, rng=self._rng)
 
     def retrieve(
         self,

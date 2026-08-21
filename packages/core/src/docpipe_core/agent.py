@@ -45,8 +45,9 @@ import boto3
 from botocore.exceptions import ClientError
 from pydantic import BaseModel
 
+from docpipe_core.aws import is_retryable
 from docpipe_core.llm import HEALTH_ASSISTANT_SYSTEM, extract_answer_text
-from docpipe_core.retrieval import KnowledgeBaseClient, RetrievedPassage, is_retryable
+from docpipe_core.retrieval import KnowledgeBaseClient, RetrievedPassage
 
 DEFAULT_AGENT_MODEL_ID = "deepseek.v3.2"  # ON_DEMAND + tool use; R1 has neither
 DEFAULT_MAX_ITERATIONS = 5
