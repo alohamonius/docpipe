@@ -2240,3 +2240,56 @@ not inherit its bug fixes.** `kb.py` and `kb_aurora.py` are two knowledge bases
 with one contract between them, and the only thing keeping their IAM in step is
 that someone remembers. Worth a test that asserts the two role policies grant
 the same Bedrock actions.
+
+## 2026-08-23 — with rerank granted, the two stores become the same instrument
+
+The `bedrock:Rerank` grant is applied and live (7 statements on
+`docpipe-dev-kb-aurora-role`, 5 preserved + 2 added; `pulumi up` reported
+`1 updated, 62 unchanged`). The Aurora reranked baseline that had never been
+possible now exists — and it is a carbon copy of the S3 Vectors one:
+
+| store | corpus | path | recall@5 | MRR |
+|---|---|---|---|---|
+| S3 Vectors | 585 | reranked | 0.7879 | 0.6571 |
+| Aurora | 585 | reranked | **0.7879** | **0.6571** |
+
+Not merely equal in aggregate — equal question by question:
+
+```
+same hit/miss    66/66
+same rank        66/66
+identical top-5  63/66   (2 of the 3 differ only in list ORDER, 0 keys apart;
+                          only refer-03 returns different chunks, 2 of 5)
+```
+
+Same three confabulations (`gap-01`, `gap-04`, `gap-05`), same 0.6 abstention,
+same per-stratum table to four decimals.
+
+**The cross-encoder erases the store.** On the raw path the two differ —
+0.7273 vs 0.7424 recall, and Aurora needs a client-side re-sort to be readable
+at all because Bedrock hands back cosine *distance* there. Reranked, the vector
+search is demoted to a candidate generator for a 25-document pool, and
+`cohere.rerank-v3-5` re-reads all 25 against the query. Both stores put the
+same 25 in the pool, so the same 5 come out in the same order. Every property
+that distinguishes the backends — score semantics, sort direction, ANN index
+type — lives *below* the reranker and does not survive it.
+
+**Consequence for the Aurora-vs-S3-Vectors decision: on the shipped path it is
+not a retrieval-quality decision.** It is cost, operational shape (auto-pause,
+the Data API, a VPC) and what pgvector unlocks later. Anyone comparing the two
+on recall or MRR with rerank on is measuring Cohere, not the store.
+
+**And it explains why the 403 hid for two days.** Aurora's rerank path being
+completely dead was invisible precisely because nothing that measured Aurora
+used it — while the number it would have produced is indistinguishable from the
+store that worked.
+
+Also observed: the first Aurora reranked call after idle took **23.5 s** —
+auto-pause resume, against 1.32 s measured warm on the Retrieve path
+(2026-08-20). The 20 s pacing kept the cluster warm for the sweep, so a batch
+job never sees it; a first user request does.
+
+Open, unchanged: `chain-05` is newly lost under rerank on both stores and is
+still unexplained, and `kb.py` / `kb_aurora.py` still have no test asserting
+they grant the same Bedrock actions — the only thing that would have caught
+this 403 at review time.

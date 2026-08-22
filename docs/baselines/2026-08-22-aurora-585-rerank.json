@@ -1,0 +1,1375 @@
+{
+  "k": 5,
+  "n": 66,
+  "min_evidence": null,
+  "rerank": true,
+  "rerank_pool": 25,
+  "search_type": null,
+  "semantic_score_is_distance": true,
+  "knowledge_base_id": "A44CISMRAM",
+  "question_set": {
+    "version": 2,
+    "authored": "2026-08-14",
+    "ratified": "2026-08-17",
+    "ratified_by": "obichuk"
+  },
+  "overall": {
+    "stratum": "ALL",
+    "n": 66,
+    "recall_at_k": 0.7879,
+    "mrr": 0.6571,
+    "stamp_integrity": 1.0,
+    "passages": 330,
+    "stamped": 330,
+    "abstention": 0.6,
+    "misses": [
+      "conn-04",
+      "conn-05",
+      "conn-08",
+      "conn-10",
+      "chain-03",
+      "chain-05",
+      "nerve-04",
+      "entr-02",
+      "gap-01",
+      "gap-02",
+      "gap-03",
+      "gap-05",
+      "gap-06",
+      "biblio-01"
+    ]
+  },
+  "by_stratum": [
+    {
+      "stratum": "graph-chain",
+      "n": 5,
+      "recall_at_k": 0.6,
+      "mrr": 0.35,
+      "stamp_integrity": 1.0,
+      "passages": 25,
+      "stamped": 25,
+      "abstention": null,
+      "misses": [
+        "chain-03",
+        "chain-05"
+      ]
+    },
+    {
+      "stratum": "graph-connection",
+      "n": 15,
+      "recall_at_k": 0.7333,
+      "mrr": 0.5333,
+      "stamp_integrity": 1.0,
+      "passages": 75,
+      "stamped": 75,
+      "abstention": null,
+      "misses": [
+        "conn-04",
+        "conn-05",
+        "conn-08",
+        "conn-10"
+      ]
+    },
+    {
+      "stratum": "graph-entrapment",
+      "n": 2,
+      "recall_at_k": 0.5,
+      "mrr": 0.5,
+      "stamp_integrity": 1.0,
+      "passages": 10,
+      "stamped": 10,
+      "abstention": null,
+      "misses": [
+        "entr-02"
+      ]
+    },
+    {
+      "stratum": "graph-index",
+      "n": 1,
+      "recall_at_k": 1.0,
+      "mrr": 1.0,
+      "stamp_integrity": 1.0,
+      "passages": 5,
+      "stamped": 5,
+      "abstention": null,
+      "misses": []
+    },
+    {
+      "stratum": "graph-joint",
+      "n": 1,
+      "recall_at_k": 1.0,
+      "mrr": 1.0,
+      "stamp_integrity": 1.0,
+      "passages": 5,
+      "stamped": 5,
+      "abstention": null,
+      "misses": []
+    },
+    {
+      "stratum": "graph-nerve",
+      "n": 4,
+      "recall_at_k": 0.75,
+      "mrr": 0.55,
+      "stamp_integrity": 1.0,
+      "passages": 20,
+      "stamped": 20,
+      "abstention": null,
+      "misses": [
+        "nerve-04"
+      ]
+    },
+    {
+      "stratum": "graph-referral-source",
+      "n": 4,
+      "recall_at_k": 1.0,
+      "mrr": 1.0,
+      "stamp_integrity": 1.0,
+      "passages": 20,
+      "stamped": 20,
+      "abstention": null,
+      "misses": []
+    },
+    {
+      "stratum": "graph-structure",
+      "n": 6,
+      "recall_at_k": 1.0,
+      "mrr": 1.0,
+      "stamp_integrity": 1.0,
+      "passages": 30,
+      "stamped": 30,
+      "abstention": null,
+      "misses": []
+    },
+    {
+      "stratum": "not-covered",
+      "n": 5,
+      "recall_at_k": 0.0,
+      "mrr": 0.0,
+      "stamp_integrity": 1.0,
+      "passages": 25,
+      "stamped": 25,
+      "abstention": 0.6,
+      "misses": [
+        "gap-01",
+        "gap-02",
+        "gap-03",
+        "gap-05",
+        "gap-06"
+      ]
+    },
+    {
+      "stratum": "prose",
+      "n": 23,
+      "recall_at_k": 0.9565,
+      "mrr": 0.8007,
+      "stamp_integrity": 1.0,
+      "passages": 115,
+      "stamped": 115,
+      "abstention": null,
+      "misses": [
+        "biblio-01"
+      ]
+    }
+  ],
+  "results": [
+    {
+      "id": "prose-01",
+      "stratum": "prose",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 4,
+      "reciprocal_rank": 0.25,
+      "returned": [
+        "anatomy/12-pain-science--06-fear-avoidance-how-pain-becomes-chronic.md",
+        "anatomy/12-pain-science--04-three-types-of-pain-iasp-classification.md",
+        "graph/body-graph-entrapment--meralgia_paresthetica--sources.md",
+        "anatomy/12-pain-science--05-central-sensitization-the-volume-knob.md",
+        "anatomy/12-pain-science--13-what-the-ai-should-do.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "prose-02",
+      "stratum": "prose",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "anatomy/12-pain-science--03-the-evidence-that-destroyed-the-old-model.md",
+        "anatomy/12-pain-science--09-my-ai-perspective-why-this-changes-everything.md",
+        "graph/body-graph-entrapment--deep_gluteal.md",
+        "anatomy/15-medical-red-flags--03-the-flags-in-plain-language-and-in-depth.md",
+        "graph/body-graph-entrapment--meralgia_paresthetica.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "prose-03",
+      "stratum": "prose",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 3,
+      "reciprocal_rank": 0.3333,
+      "returned": [
+        "anatomy/evidence-honesty--04-the-verification-labels.md",
+        "anatomy/evidence-honesty--06-the-downgrade-rule.md",
+        "anatomy/evidence-honesty--02-the-scale.md",
+        "anatomy/evidence-honesty--07-what-this-means-for-anything-reading-these-docs.md",
+        "anatomy/evidence-honesty--03-the-scale.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "prose-04",
+      "stratum": "prose",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "anatomy/evidence-honesty--06-the-downgrade-rule.md",
+        "anatomy/evidence-honesty--02-the-scale.md",
+        "anatomy/evidence-honesty--03-the-scale.md",
+        "anatomy/evidence-honesty--04-the-verification-labels.md",
+        "anatomy/evidence-honesty--07-what-this-means-for-anything-reading-these-docs.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "prose-05",
+      "stratum": "prose",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "anatomy/15-medical-red-flags--02-screening-summary-table-machine-readable.md",
+        "anatomy/15-medical-red-flags--03-the-flags-in-plain-language-and-in-depth.md",
+        "anatomy/15-medical-red-flags--04-the-flags-in-plain-language-and-in-depth.md",
+        "anatomy/15-medical-red-flags--06-how-the-app-uses-this-document.md",
+        "anatomy/15-medical-red-flags--05-what-red-flags-are-not.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "prose-06",
+      "stratum": "prose",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "anatomy/15-medical-red-flags--03-the-flags-in-plain-language-and-in-depth.md",
+        "anatomy/15-medical-red-flags--02-screening-summary-table-machine-readable.md",
+        "graph/body-graph-entrapment--pudendal_canal.md",
+        "graph/body-graph-referral-source--uterus_prostate.md",
+        "graph/body-graph-entrapment--meralgia_paresthetica--sources.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "prose-07",
+      "stratum": "prose",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "anatomy/06-breathing-and-cervical-connection--06-breathing-retraining-protocol.md",
+        "anatomy/06-breathing-and-cervical-connection--03-the-mechanism-why-breathing-affects-your-neck.md",
+        "anatomy/03-finding-your-compensations--07-tier-4-breathing-and-tension-tests.md",
+        "anatomy/06-breathing-and-cervical-connection--08-honest-limitations.md",
+        "anatomy/06-breathing-and-cervical-connection--02-why-breathing-matters-for-neck-and-shoulder-problems.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "prose-08",
+      "stratum": "prose",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "anatomy/13-eyes-vision-and-posture--04-screen-time-the-modern-epidemic.md",
+        "anatomy/13-eyes-vision-and-posture--09-my-ai-perspective-why-this-topic-surprised-me.md",
+        "anatomy/13-eyes-vision-and-posture--01-overview.md",
+        "anatomy/13-eyes-vision-and-posture--08-connection-to-user-s-specific-case.md",
+        "anatomy/13-eyes-vision-and-posture--07-practical-implications.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "prose-09",
+      "stratum": "prose",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "anatomy/14-foot-as-foundation--05-the-big-toe-40-60-of-push-off-force.md",
+        "anatomy/05-muscle-anatomy-database--11-lower-body.md",
+        "graph/body-graph-connection--extensor_hallucis_longus.md",
+        "anatomy/05-muscle-anatomy-database--15-verification-links-open-access.md",
+        "graph/body-graph-connection--extensor_digitorum_longus.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "prose-10",
+      "stratum": "prose",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 2,
+      "reciprocal_rank": 0.5,
+      "returned": [
+        "anatomy/14-foot-as-foundation--11-my-ai-perspective.md",
+        "anatomy/14-foot-as-foundation--07-the-arch-support-debate.md",
+        "anatomy/14-foot-as-foundation--06-what-modern-shoes-do-to-feet.md",
+        "anatomy/14-foot-as-foundation--12-honest-limitations.md",
+        "anatomy/14-foot-as-foundation--03-the-foot-core-parallel-to-trunk-core.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "prose-11",
+      "stratum": "prose",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 2,
+      "reciprocal_rank": 0.5,
+      "returned": [
+        "anatomy/11-tongue-hyoid-and-deep-front-line--01-overview.md",
+        "anatomy/11-tongue-hyoid-and-deep-front-line--03-why-tongue-on-palate-matters.md",
+        "anatomy/11-tongue-hyoid-and-deep-front-line--07-practical-recommendations.md",
+        "anatomy/11-tongue-hyoid-and-deep-front-line--05-the-deep-front-line-tongue-to-toes.md",
+        "anatomy/11-tongue-hyoid-and-deep-front-line--04-why-tongue-on-palate-matters.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "prose-12",
+      "stratum": "prose",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 2,
+      "reciprocal_rank": 0.5,
+      "returned": [
+        "exercise-science/01-emg-and-muscle-activation--02-tl-dr.md",
+        "exercise-science/01-emg-and-muscle-activation--07-what-doesn-t-hold-up.md",
+        "exercise-science/01-emg-and-muscle-activation--04-a-short-history.md",
+        "exercise-science/01-emg-and-muscle-activation--06-what-s-contested.md",
+        "exercise-science/01-emg-and-muscle-activation--11-sources.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "prose-13",
+      "stratum": "prose",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 3,
+      "reciprocal_rank": 0.3333,
+      "returned": [
+        "exercise-science/03-primary-muscle-attribution-policy--02-the-two-conventions.md",
+        "exercise-science/03-primary-muscle-attribution-policy--03-our-choice-convention-b.md",
+        "exercise-science/02-triangulation-report--02-methodology-note-when-our-calls-disagree.md",
+        "exercise-science/01-emg-and-muscle-activation--08-implications-for-our-app.md",
+        "exercise-science/03-primary-muscle-attribution-policy--05-why-this-shows-up-as-in-the-triangulation-report.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "prose-14",
+      "stratum": "prose",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "anatomy/04-neuromuscular-reeducation--04-the-5-stages-of-motor-learning.md",
+        "anatomy/04-neuromuscular-reeducation--08-progression-framework.md",
+        "anatomy/04-neuromuscular-reeducation--05-practical-re-education-techniques.md",
+        "anatomy/03-finding-your-compensations--05-tier-2-movement-speed-tests.md",
+        "anatomy/04-neuromuscular-reeducation--10-measuring-progress.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "prose-15",
+      "stratum": "prose",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "anatomy/08-emotions-stress-and-motor-control--03-stress-and-shoulders-what-s-real.md",
+        "anatomy/10-myths-and-surprising-connections--02-part-1-top-myths-we-found.md",
+        "anatomy/08-emotions-stress-and-motor-control--08-summary-table-for-ai-reasoning.md",
+        "graph/body-graph-connection--levator_scapulae.md",
+        "anatomy/02-nerve-pathways-and-crosstalk--06-mechanism-5-central-sensitization.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "prose-16",
+      "stratum": "prose",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "anatomy/07-fascia-science-current-state--03-what-we-know-for-sure.md",
+        "anatomy/07-fascia-science-current-state--04-what-we-know-for-sure.md",
+        "anatomy/07-fascia-science-current-state--02-history-200-years-of-being-ignored.md",
+        "anatomy/07-fascia-science-current-state--06-what-we-don-t-know-to.md",
+        "anatomy/07-fascia-science-current-state--05-what-s-debated-uncertain.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "prose-17",
+      "stratum": "prose",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "anatomy/03-finding-your-compensations--03-tier-1-mirror-tests-observation-based.md",
+        "anatomy/03-finding-your-compensations--04-tier-1-mirror-tests-observation-based.md",
+        "anatomy/03-finding-your-compensations--06-tier-3-cross-body-tests.md",
+        "anatomy/03-finding-your-compensations--07-tier-4-breathing-and-tension-tests.md",
+        "anatomy/03-finding-your-compensations--08-important-caveats-about-self-assessment.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "prose-18",
+      "stratum": "prose",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "anatomy/09-diaphragm-breathing-and-exercise--03-dual-function-breathing-and-posture.md",
+        "anatomy/09-diaphragm-breathing-and-exercise--04-the-pressure-cylinder-core-stability-system.md",
+        "anatomy/09-diaphragm-breathing-and-exercise--05-aerobic-vs-anaerobic-exercise-the-breathing-dimension.md",
+        "anatomy/09-diaphragm-breathing-and-exercise--07-practical-implications.md",
+        "anatomy/10-myths-and-surprising-connections--04-part-2-surprising-body-connections-that-are-real.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "prose-19",
+      "stratum": "prose",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "anatomy/08-emotions-stress-and-motor-control--05-applied-kinesiology-muscle-testing-the-controversy.md",
+        "anatomy/10-myths-and-surprising-connections--03-part-1-top-myths-we-found.md",
+        "anatomy/08-emotions-stress-and-motor-control--06-somatic-experiencing-body-based-trauma-therapy.md",
+        "anatomy/00-index--02-documents.md",
+        "anatomy/08-emotions-stress-and-motor-control--08-summary-table-for-ai-reasoning.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "prose-20",
+      "stratum": "prose",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "anatomy/10-myths-and-surprising-connections--03-part-1-top-myths-we-found.md",
+        "anatomy/10-myths-and-surprising-connections--02-part-1-top-myths-we-found.md",
+        "graph/body-graph-joint--sacroiliac.md",
+        "graph/body-graph-joint--patellofemoral.md",
+        "graph/body-graph-joint--tibiofemoral.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "conn-01",
+      "stratum": "graph-connection",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "graph/body-graph-connection--psoas.md",
+        "anatomy/09-diaphragm-breathing-and-exercise--07-practical-implications.md",
+        "graph/body-graph-connection--gluteus_maximus.md",
+        "graph/body-graph-connection--serratus_posterior_inferior--anatomy.md",
+        "anatomy/05-muscle-anatomy-database--08-lower-body.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "conn-02",
+      "stratum": "graph-connection",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 2,
+      "reciprocal_rank": 0.5,
+      "returned": [
+        "exercise-science/01-emg-and-muscle-activation--03-what-is-emg.md",
+        "graph/body-graph-connection--psoas.md",
+        "exercise-science/01-emg-and-muscle-activation--05-what-we-know-for-sure.md",
+        "anatomy/10-myths-and-surprising-connections--04-part-2-surprising-body-connections-that-are-real.md",
+        "anatomy/09-diaphragm-breathing-and-exercise--07-practical-implications.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "conn-03",
+      "stratum": "graph-connection",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 2,
+      "reciprocal_rank": 0.5,
+      "returned": [
+        "anatomy/03-finding-your-compensations--04-tier-1-mirror-tests-observation-based.md",
+        "graph/body-graph-connection--gluteus_medius.md",
+        "anatomy/05-muscle-anatomy-database--08-lower-body.md",
+        "anatomy/14-foot-as-foundation--03-the-foot-core-parallel-to-trunk-core.md",
+        "graph/body-graph-connection--extensor_hallucis_longus.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "conn-04",
+      "stratum": "graph-connection",
+      "question_class": "direct",
+      "hit": false,
+      "rank": null,
+      "reciprocal_rank": 0.0,
+      "returned": [
+        "graph/body-graph-connection--subclavius--trigger-point-referral-where-pain-is-felt.md",
+        "anatomy/05-muscle-anatomy-database--03-upper-body.md",
+        "graph/body-graph-connection--omohyoid.md",
+        "graph/body-graph-connection--platysma--trigger-point-referral-where-pain-is-felt.md",
+        "graph/body-graph-connection--temporalis.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "conn-05",
+      "stratum": "graph-connection",
+      "question_class": "direct",
+      "hit": false,
+      "rank": null,
+      "reciprocal_rank": 0.0,
+      "returned": [
+        "graph/body-graph-entrapment--suprascapular_notch.md",
+        "anatomy/02-nerve-pathways-and-crosstalk--09-honest-assessment.md",
+        "graph/body-graph-entrapment--pronator_teres--sources.md",
+        "graph/body-graph-entrapment--thoracic_outlet.md",
+        "anatomy/08-emotions-stress-and-motor-control--03-stress-and-shoulders-what-s-real.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "conn-06",
+      "stratum": "graph-connection",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 4,
+      "reciprocal_rank": 0.25,
+      "returned": [
+        "anatomy/13-eyes-vision-and-posture--06-convergence-and-near-work.md",
+        "graph/body-graph-connection--splenius_capitis--anatomy.md",
+        "anatomy/13-eyes-vision-and-posture--02-the-suboccipital-muscles-the-eyes-in-the-back-of-your-head.md",
+        "graph/body-graph-connection--sternocleidomastoid.md",
+        "graph/body-graph-connection--temporalis.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "conn-07",
+      "stratum": "graph-connection",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "graph/body-graph-connection--tibialis_posterior.md",
+        "graph/body-graph-connection--flexor_digitorum_longus.md",
+        "anatomy/14-foot-as-foundation--03-the-foot-core-parallel-to-trunk-core.md",
+        "anatomy/14-foot-as-foundation--06-what-modern-shoes-do-to-feet.md",
+        "graph/body-graph-connection--adductor_hallucis--key-clinical-connections.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "conn-08",
+      "stratum": "graph-connection",
+      "question_class": "direct",
+      "hit": false,
+      "rank": null,
+      "reciprocal_rank": 0.0,
+      "returned": [
+        "anatomy/06-breathing-and-cervical-connection--03-the-mechanism-why-breathing-affects-your-neck.md",
+        "anatomy/06-breathing-and-cervical-connection--04-the-diaphragm-psoas-cervical-chain.md",
+        "anatomy/06-breathing-and-cervical-connection--06-breathing-retraining-protocol.md",
+        "anatomy/06-breathing-and-cervical-connection--08-honest-limitations.md",
+        "anatomy/06-breathing-and-cervical-connection--01-overview.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "conn-09",
+      "stratum": "graph-connection",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 2,
+      "reciprocal_rank": 0.5,
+      "returned": [
+        "graph/body-graph-index.md",
+        "graph/body-graph-connection--piriformis.md",
+        "graph/body-graph-connection--obturator_internus--anatomy.md",
+        "graph/body-graph-nerve--sciatic.md",
+        "graph/body-graph-connection--psoas.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "conn-10",
+      "stratum": "graph-connection",
+      "question_class": "direct",
+      "hit": false,
+      "rank": null,
+      "reciprocal_rank": 0.0,
+      "returned": [
+        "graph/body-graph-connection--serratus_posterior_inferior--anatomy.md",
+        "graph/body-graph-connection--abdominals.md",
+        "graph/body-graph-connection--piriformis.md",
+        "graph/body-graph-connection--gluteus_medius.md",
+        "graph/body-graph-connection--internal_oblique--sources.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "conn-11",
+      "stratum": "graph-connection",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 4,
+      "reciprocal_rank": 0.25,
+      "returned": [
+        "graph/body-graph-connection--subscapularis--sources.md",
+        "graph/body-graph-joint--acromioclavicular.md",
+        "graph/body-graph-connection--subscapularis--anatomy.md",
+        "graph/body-graph-connection--supraspinatus.md",
+        "graph/body-graph-connection--subscapularis--key-clinical-connections.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "conn-12",
+      "stratum": "graph-connection",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "graph/body-graph-connection--extensor_pollicis_brevis.md",
+        "graph/body-graph-connection--lumbrical_median.md",
+        "graph/body-graph-connection--extensor_pollicis_longus.md",
+        "graph/body-graph-joint--radiocarpal.md",
+        "graph/body-graph-connection--flexor_pollicis_longus.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "conn-13",
+      "stratum": "graph-connection",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "graph/body-graph-connection--brachialis.md",
+        "graph/body-graph-joint--humeroulnar.md",
+        "graph/body-graph-connection--biceps-long_head.md",
+        "graph/body-graph-connection--biceps-short_head.md",
+        "graph/body-graph-connection--anconeus--anatomy.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "conn-14",
+      "stratum": "graph-connection",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "graph/body-graph-connection--gastrocnemius.md",
+        "graph/body-graph-connection--plantaris--anatomy.md",
+        "anatomy/05-muscle-anatomy-database--10-lower-body.md",
+        "graph/body-graph-nerve--sciatic.md",
+        "graph/body-graph-connection--flexor_digitorum_longus.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "conn-15",
+      "stratum": "graph-connection",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "graph/body-graph-connection--suboccipitals.md",
+        "anatomy/13-eyes-vision-and-posture--02-the-suboccipital-muscles-the-eyes-in-the-back-of-your-head.md",
+        "graph/body-graph-index.md",
+        "anatomy/13-eyes-vision-and-posture--09-my-ai-perspective-why-this-topic-surprised-me.md",
+        "graph/body-graph-connection--rectus_capitis_anterior--sources.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "struct-01",
+      "stratum": "graph-structure",
+      "question_class": "structure-only",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "graph/body-graph-structure--patella.md",
+        "graph/body-graph-index.md",
+        "graph/body-graph-structure--cuneiform.md",
+        "graph/body-graph-structure--metacarpal.md",
+        "anatomy/05-muscle-anatomy-database--10-lower-body.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "struct-02",
+      "stratum": "graph-structure",
+      "question_class": "structure-only",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "graph/body-graph-structure--glenoid_labrum.md",
+        "graph/body-graph-joint--glenohumeral.md",
+        "graph/body-graph-index.md",
+        "graph/body-graph-connection--biceps-long_head.md",
+        "graph/body-graph-connection--palmar_interosseous_1.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "struct-03",
+      "stratum": "graph-structure",
+      "question_class": "structure-only",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "graph/body-graph-structure--scaphoid.md",
+        "graph/body-graph-structure--scapula.md",
+        "graph/body-graph-structure--cervical_vertebra.md",
+        "graph/body-graph-structure--clavicle.md",
+        "graph/body-graph-structure--humerus.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "struct-04",
+      "stratum": "graph-structure",
+      "question_class": "structure-only",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "graph/body-graph-structure--subdeltoid_bursa.md",
+        "graph/body-graph-index.md",
+        "graph/body-graph-joint--acromioclavicular.md",
+        "graph/body-graph-joint--sacroiliac.md",
+        "graph/body-graph-connection--peroneus_brevis.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "struct-05",
+      "stratum": "graph-structure",
+      "question_class": "structure-only",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "graph/body-graph-structure--styloglossus.md",
+        "graph/body-graph-structure--genioglossus.md",
+        "graph/body-graph-structure--hyoglossus.md",
+        "anatomy/11-tongue-hyoid-and-deep-front-line--02-the-hyoid-the-most-unusual-bone-in-the-body-verified.md",
+        "anatomy/11-tongue-hyoid-and-deep-front-line--09-sources.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "struct-06",
+      "stratum": "graph-structure",
+      "question_class": "structure-only",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "graph/body-graph-structure--coracohumeral_ligament.md",
+        "graph/body-graph-joint--glenohumeral.md",
+        "graph/body-graph-index.md",
+        "graph/body-graph-joint--acromioclavicular.md",
+        "graph/body-graph-structure--superior_glenohumeral_ligament.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "chain-01",
+      "stratum": "graph-chain",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "graph/body-graph-chain--DFL.md",
+        "anatomy/09-diaphragm-breathing-and-exercise--02-the-diaphragm-s-unique-position.md",
+        "anatomy/01-myofascial-chains--05-the-12-myofascial-meridians.md",
+        "graph/body-graph-index.md",
+        "anatomy/01-myofascial-chains--06-the-12-myofascial-meridians.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "chain-02",
+      "stratum": "graph-chain",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 4,
+      "reciprocal_rank": 0.25,
+      "returned": [
+        "graph/body-graph-index.md",
+        "anatomy/01-myofascial-chains--03-the-12-myofascial-meridians.md",
+        "anatomy/14-foot-as-foundation--09-connection-to-other-systems.md",
+        "graph/body-graph-chain--SBL.md",
+        "anatomy/14-foot-as-foundation--04-the-ankle-to-spine-cascade.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "chain-03",
+      "stratum": "graph-chain",
+      "question_class": "direct",
+      "hit": false,
+      "rank": null,
+      "reciprocal_rank": 0.0,
+      "returned": [
+        "graph/body-graph-connection--peroneus_brevis.md",
+        "anatomy/01-myofascial-chains--04-the-12-myofascial-meridians.md",
+        "anatomy/01-myofascial-chains--03-the-12-myofascial-meridians.md",
+        "anatomy/01-myofascial-chains--05-the-12-myofascial-meridians.md",
+        "anatomy/05-muscle-anatomy-database--06-core.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "chain-04",
+      "stratum": "graph-chain",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 2,
+      "reciprocal_rank": 0.5,
+      "returned": [
+        "graph/body-graph-index.md",
+        "graph/body-graph-chain--Spiral.md",
+        "anatomy/01-myofascial-chains--04-the-12-myofascial-meridians.md",
+        "graph/body-graph-connection--serratus_anterior.md",
+        "graph/body-graph-connection--external_oblique.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "chain-05",
+      "stratum": "graph-chain",
+      "question_class": "direct",
+      "hit": false,
+      "rank": null,
+      "reciprocal_rank": 0.0,
+      "returned": [
+        "anatomy/01-myofascial-chains--06-the-12-myofascial-meridians.md",
+        "graph/body-graph-index.md",
+        "graph/body-graph-connection--brachialis.md",
+        "graph/body-graph-connection--triceps-long_head.md",
+        "anatomy/01-myofascial-chains--05-the-12-myofascial-meridians.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "nerve-01",
+      "stratum": "graph-nerve",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 5,
+      "reciprocal_rank": 0.2,
+      "returned": [
+        "graph/body-graph-connection--lumbrical_ulnar.md",
+        "graph/body-graph-entrapment--carpal_tunnel.md",
+        "graph/body-graph-nerve--dorsal_digital_radial.md",
+        "graph/body-graph-nerve--intermediate_dorsal_cutaneous.md",
+        "graph/body-graph-nerve--ulnar.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "nerve-02",
+      "stratum": "graph-nerve",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "graph/body-graph-entrapment--carpal_tunnel.md",
+        "graph/body-graph-connection--dorsal_interosseous.md",
+        "graph/body-graph-connection--flexor_pollicis_longus.md",
+        "graph/body-graph-connection--palmar_interosseous_1.md",
+        "anatomy/02-nerve-pathways-and-crosstalk--08-when-to-see-a-professional.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "nerve-03",
+      "stratum": "graph-nerve",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "graph/body-graph-referral-source--diaphragm_referral.md",
+        "anatomy/05-muscle-anatomy-database--07-core.md",
+        "graph/body-graph-connection--diaphragm.md",
+        "graph/body-graph-referral-source--gallbladder.md",
+        "anatomy/06-breathing-and-cervical-connection--04-the-diaphragm-psoas-cervical-chain.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "nerve-04",
+      "stratum": "graph-nerve",
+      "question_class": "direct",
+      "hit": false,
+      "rank": null,
+      "reciprocal_rank": 0.0,
+      "returned": [
+        "anatomy/13-eyes-vision-and-posture--04-screen-time-the-modern-epidemic.md",
+        "graph/body-graph-referral-source--paranasal_sinus.md",
+        "graph/body-graph-connection--suboccipitals.md",
+        "graph/body-graph-connection--sternocleidomastoid.md",
+        "anatomy/13-eyes-vision-and-posture--09-my-ai-perspective-why-this-topic-surprised-me.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "refer-01",
+      "stratum": "graph-referral-source",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "graph/body-graph-referral-source--gallbladder.md",
+        "graph/body-graph-referral-source--diaphragm_referral.md",
+        "graph/body-graph-joint--acromioclavicular.md",
+        "graph/body-graph-entrapment--suprascapular_notch.md",
+        "graph/body-graph-joint--glenohumeral.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "refer-02",
+      "stratum": "graph-referral-source",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "graph/body-graph-referral-source--pancreas.md",
+        "graph/body-graph-referral-source--gallbladder.md",
+        "anatomy/15-medical-red-flags--04-the-flags-in-plain-language-and-in-depth.md",
+        "graph/body-graph-referral-source--uterus_prostate.md",
+        "anatomy/12-pain-science--04-three-types-of-pain-iasp-classification.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "refer-03",
+      "stratum": "graph-referral-source",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "graph/body-graph-referral-source--paranasal_sinus.md",
+        "graph/body-graph-nerve--trigeminocervical.md",
+        "graph/body-graph-connection--sternocleidomastoid.md",
+        "anatomy/11-tongue-hyoid-and-deep-front-line--08-honest-limitations.md",
+        "graph/body-graph-connection--temporalis.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "entr-01",
+      "stratum": "graph-entrapment",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "graph/body-graph-entrapment--carpal_tunnel.md",
+        "graph/body-graph-connection--lumbrical_median.md",
+        "graph/body-graph-connection--abductor_digiti_minimi_hand.md",
+        "graph/body-graph-connection--supinator.md",
+        "graph/body-graph-connection--flexor_pollicis_longus.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "entr-02",
+      "stratum": "graph-entrapment",
+      "question_class": "direct",
+      "hit": false,
+      "rank": null,
+      "reciprocal_rank": 0.0,
+      "returned": [
+        "graph/body-graph-entrapment--cubital_tunnel.md",
+        "anatomy/05-muscle-anatomy-database--03-upper-body.md",
+        "graph/body-graph-joint--glenohumeral.md",
+        "anatomy/03-finding-your-compensations--02-why-most-people-don-t-notice-their-compensations.md",
+        "graph/body-graph-entrapment--suprascapular_notch.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "joint-01",
+      "stratum": "graph-joint",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "graph/body-graph-joint--glenohumeral.md",
+        "graph/body-graph-joint--acromioclavicular.md",
+        "graph/body-graph-joint--scapulothoracic.md",
+        "graph/body-graph-joint--humeroulnar.md",
+        "graph/body-graph-joint--proximal_radioulnar.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "index-01",
+      "stratum": "graph-index",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "graph/body-graph-index.md",
+        "graph/body-graph-connection--dorsal_interossei_foot--anatomy.md",
+        "graph/body-graph-connection--multifidus--anatomy.md",
+        "graph/body-graph-connection--iliacus--anatomy.md",
+        "graph/body-graph-connection--lumbricals_foot--sources.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "gap-01",
+      "stratum": "not-covered",
+      "question_class": "not-covered",
+      "hit": false,
+      "rank": null,
+      "reciprocal_rank": 0.0,
+      "returned": [
+        "graph/body-graph-nerve--femoral.md",
+        "graph/body-graph-nerve--genitofemoral.md",
+        "graph/body-graph-nerve--sciatic.md",
+        "graph/body-graph-nerve--saphenous.md",
+        "graph/body-graph-nerve--lateral_femoral_cutaneous.md"
+      ],
+      "forbidden_returned": [
+        "graph/body-graph-nerve--sciatic.md"
+      ],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "gap-02",
+      "stratum": "not-covered",
+      "question_class": "not-covered",
+      "hit": false,
+      "rank": null,
+      "reciprocal_rank": 0.0,
+      "returned": [
+        "graph/body-graph-joint--tibiofemoral.md",
+        "graph/body-graph-joint--patellofemoral.md",
+        "graph/body-graph-joint--proximal_tibiofibular.md",
+        "graph/body-graph-joint--proximal_radioulnar.md",
+        "graph/body-graph-joint--talocrural.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "gap-03",
+      "stratum": "not-covered",
+      "question_class": "not-covered",
+      "hit": false,
+      "rank": null,
+      "reciprocal_rank": 0.0,
+      "returned": [
+        "graph/body-graph-entrapment--tarsal_tunnel.md",
+        "graph/body-graph-entrapment--fibular_head--sources-1.md",
+        "graph/body-graph-connection--abductor_hallucis.md",
+        "graph/body-graph-entrapment--guyon_canal--sources-1.md",
+        "graph/body-graph-entrapment--obturator_canal.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "gap-04",
+      "stratum": "prose",
+      "question_class": "direct",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "anatomy/15-medical-red-flags--02-screening-summary-table-machine-readable.md",
+        "graph/body-graph-referral-source--gallbladder.md",
+        "graph/body-graph-entrapment--meralgia_paresthetica--sources.md",
+        "graph/body-graph-entrapment--thoracic_outlet.md",
+        "graph/body-graph-entrapment--meralgia_paresthetica.md"
+      ],
+      "forbidden_returned": [
+        "graph/body-graph-referral-source--gallbladder.md"
+      ],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "gap-05",
+      "stratum": "not-covered",
+      "question_class": "not-covered",
+      "hit": false,
+      "rank": null,
+      "reciprocal_rank": 0.0,
+      "returned": [
+        "graph/body-graph-entrapment--obturator_canal.md",
+        "graph/body-graph-nerve--obturator.md",
+        "graph/body-graph-connection--obturator_internus--sources.md",
+        "graph/body-graph-connection--obturator_internus--key-clinical-connections.md",
+        "graph/body-graph-connection--obturator_externus--sources.md"
+      ],
+      "forbidden_returned": [
+        "graph/body-graph-connection--obturator_externus--sources.md"
+      ],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "gap-06",
+      "stratum": "not-covered",
+      "question_class": "not-covered",
+      "hit": false,
+      "rank": null,
+      "reciprocal_rank": 0.0,
+      "returned": [
+        "graph/body-graph-joint--patellofemoral.md",
+        "graph/body-graph-joint--tibiofemoral.md",
+        "graph/body-graph-joint--proximal_tibiofibular.md",
+        "graph/body-graph-joint--proximal_radioulnar.md",
+        "graph/body-graph-joint--sacroiliac.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "biblio-01",
+      "stratum": "prose",
+      "question_class": "bibliography",
+      "hit": false,
+      "rank": null,
+      "reciprocal_rank": 0.0,
+      "returned": [
+        "graph/body-graph-chain--SBL.md",
+        "graph/body-graph-chain--LL.md",
+        "graph/body-graph-chain--DFL.md",
+        "graph/body-graph-chain--SFL.md",
+        "graph/body-graph-chain--BFL.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "biblio-02",
+      "stratum": "prose",
+      "question_class": "bibliography",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "anatomy/12-pain-science--15-sources.md",
+        "anatomy/12-pain-science--03-the-evidence-that-destroyed-the-old-model.md",
+        "anatomy/12-pain-science--02-the-revolution-pain-tissue-damage.md",
+        "anatomy/12-pain-science--04-three-types-of-pain-iasp-classification.md",
+        "graph/body-graph-referral-source--uterus_prostate.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    },
+    {
+      "id": "biblio-03",
+      "stratum": "graph-referral-source",
+      "question_class": "bibliography",
+      "hit": true,
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "returned": [
+        "graph/body-graph-referral-source--gallbladder.md",
+        "graph/body-graph-referral-source--diaphragm_referral.md",
+        "graph/body-graph-referral-source--pancreas.md",
+        "graph/body-graph-connection--diaphragm.md",
+        "graph/body-graph-joint--glenohumeral.md"
+      ],
+      "forbidden_returned": [],
+      "passages": 5,
+      "stamped": 5
+    }
+  ],
+  "forbidden_violations": [
+    "gap-01",
+    "gap-04",
+    "gap-05"
+  ]
+}
