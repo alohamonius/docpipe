@@ -2293,3 +2293,49 @@ Open, unchanged: `chain-05` is newly lost under rerank on both stores and is
 still unexplained, and `kb.py` / `kb_aurora.py` still have no test asserting
 they grant the same Bedrock actions — the only thing that would have caught
 this 403 at review time.
+
+## 2026-08-23 — graph expansion is dominated by `k=9`, and the anecdote that justified it was an argument for a bigger k
+
+Graph expansion (`graph.py`, 393 nodes / 396 edges) had shipped in code on the
+strength of a single A/B and had never been scored. Scored now, against the
+nine genuine misses of the reranked 585 baseline (66 questions, `not-covered`
+excluded because missing is correct there):
+
+| | rescues | which |
+|---|---|---|
+| graph expansion, budget 4 | **2 / 9** | `chain-05`, `nerve-04` |
+| plain `k=9`, no graph | **6 / 9** | `conn-05`, `conn-08`, `chain-05`, `nerve-04`, `entr-02`, `biblio-01` |
+
+**The graph's two rescues are a strict subset of what `k=9` gets for free.**
+Expansion spends up to 4 extra passages, so `k=5+4` and `k=9` are the same
+context budget — and at that budget the graph is strictly dominated. It rescues
+a third as many questions and adds a JSON index, a parser, a traversal and an
+ordering rule to do it.
+
+**The reasoning error is the transferable part.** The 2026-08-21 A/B —
+*"vector search returned four chunks and never surfaced either fascial-line
+chunk; expansion added both"* — was run at `top_k=4`. It is evidence that the
+right chunks sat just outside a narrow window. That is an argument for widening
+the window. It was read as an argument for traversal, because traversal was the
+thing being built. **A demo that shows "X was missing and my feature added it"
+is not evidence for the feature until the null control — "would anything else
+have added it?" — has been run.**
+
+**Where expansion is inert is where retrieval is weakest.** Three of the nine
+misses (`conn-05`, `conn-08`, `entr-02`) produce **zero hops** — the seeds land
+on chunks whose only relationship content is `Key clinical connections` (132
+files) and `Functional relationships` (117), which are prose and carry no
+parseable ids. So the graph is thinnest exactly where the vector path already
+failed, and `k=9` rescues all three.
+
+**Not retracted, scoped.** This measures retrieval *reach* on a 66-question set
+whose questions are mostly single-hop; it says nothing about answer quality,
+about the agentic path (which composes its own retrieval calls), or about a
+question set built to need two hops. `chain-05` is a genuine point of interest
+— rerank lost it and traversal recovers it — so the edge does know something
+the cross-encoder does not. But on the instrument we have, the honest summary
+is: **raise `k` before reaching for a graph, and do not ship the graph as a
+default.**
+
+Cheapest next test if the graph is to be defended: a question set that
+*requires* two hops. If it does not win there, it does not win.
