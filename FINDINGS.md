@@ -1861,3 +1861,382 @@ Also caught by the type checker rather than at runtime: `build_graph` reused
 the name `heading` for both a `Match` and a `str` in one scope. And `budget=0`
 returned one hop, because the cap was checked after appending — the difference
 between "expansion off" and "expansion on, small budget".
+
+## 2026-08-21 — the corpus outgrew the embedder while nobody was looking, and `plan` was an N+1 that hid behind a 2-file fixture
+
+Two defects, found in the same afternoon, both invisible at test-fixture scale
+and both only observable against the real 585-chunk corpus.
+
+### 1. Four chunks had grown past Titan v2's hard cap and could not be embedded
+
+Adding a post-build size check (asked for directly: *"we probably need to add
+some health after build to check files size"*) turned up four `entrapment`
+chunks at **1.08–1.65× the 8,192-token embedding cap** — not near it, over it.
+An over-cap chunk is not a degraded chunk; it produces **no vector at all**.
+
+The comment in `health.studio` `apps/web/src/lib/kb/chunk.ts` asserting *"0 of
+383 chunks are anywhere near the limit"* was true when written and had since
+become false — the corpus grew to 579. **A measured claim with no test behind
+it decays silently.** It is now `EMBEDDER_TOKEN_CAP`, exported and asserted.
+
+The fix (health.studio owns it — see that repo's `FINDINGS.md`) peels
+`### Sources` off an over-cap chunk onto siblings, **keeping the parent's key**:
+
+```
+11173 → 3877 tok  guyon_canal            (+2 sources chunks)
+13476 → 4219 tok  fibular_head           (+2 sources chunks)
+ 8818 → 3528 tok  pronator_teres         (+1 sources chunk)
+ 9457 → 3683 tok  meralgia_paresthetica  (+1 sources chunk)
+```
+
+Corpus 579 → 585. **`radiocarpal` remains at 8,172 of 8,192 tokens** — 20
+tokens of headroom, a refusal rather than a peel because its bulk is not
+`Sources`. The build now warns at 90% of the cap, which is the only thing that
+will announce the next one.
+
+Two sub-findings worth keeping:
+
+- **Budget against the constraint you are actually failing.** First attempt
+  budgeted the peel against the 1,024-token *ceiling* rather than the 8,192
+  *cap*, producing 17 sources chunks for `fibular_head` alone and taking the
+  corpus 579 → 628. Rebudgeted to 80% of the cap: **+6 chunks, not +49.**
+- **A peel is not a split, and filing it as one broke an invariant.** A split
+  retires its parent's key; a peel keeps it. Recording peels as `SplitRecord`
+  falsified `retired === parents`. They get their own `PeelRecord` ledger.
+
+`docs/INGEST-RUNBOOK.md`'s "largest chunk is 24.7 KB, ~30% headroom" is now
+**31,072 B and ~5%**; the assertion in `test_default_limit_admits_the_largest
+_real_chunk` was updated to the measured number rather than left to rot.
+
+### 2. `plan` issued one `head_object` per file — 1,170 round trips
+
+A dry run against the rebuilt corpus printed its header and then appeared to
+hang. It was not hung. `CorpusSyncer.plan` called `head_object` per key to
+compare ETags, and 585 chunks × (document + sidecar) is **1,170 sequential
+HEAD requests**.
+
+**`ListObjectsV2` already returns the ETag of every object it lists.** The
+per-key HEAD bought nothing. `plan` now reads `list_remote_etags()` once:
+
+| | before | after |
+|---|---|---|
+| S3 requests to plan | 1,170 HEAD | 1 LIST |
+| wall clock, live dev bucket | **>4m48s** (still running when sampled) | **3.5s** |
+| upload plan | 191 upload / 979 skip / 0 orphans | **byte-identical** |
+
+ETag parity between LIST and HEAD is exact, multipart `-N` suffix included, so
+the comparison still fails toward re-uploading and never toward a false skip.
+
+**Why this survived a test suite with 28 passing sync tests.** Every fixture
+was 2–40 files, where 1,170-vs-1 is 4-vs-1 and reads as noise. The regression
+test therefore asserts *cost*, not behaviour — plan a 4-file corpus and a
+40-file corpus and assert the S3 request counts are **equal**, which is only
+possible if nothing is asked per file. Counting is done on botocore's
+`before-call.s3` event bus, because a wrapper around the client object does not
+see calls a paginator makes internally. Verified red against the old code:
+`assert 80 == 0`, one HEAD per file, exactly as predicted.
+
+Corollary for the rest of this repo: **an N+1 is a correctness-preserving bug,
+so no functional test can catch it.** Where latency matters, the assertion has
+to be about request count.
+
+## 2026-08-22 — the first real sync landed 96/96, and printed two numbers wrong on the way
+
+The S3 Vectors ingest of the 585-chunk corpus succeeded completely — job
+`FWU5IEPVHS`, `scanned=585 failed=0 skipped=0 deleted=0`, and a follow-up dry
+run reports **`would upload: 0  unchanged: 1170`**, i.e. the bucket now equals
+the build exactly. Both defects below are in the *reporting*, not the data.
+Neither would have been caught by re-reading the code; both needed a real run.
+
+### `indexed=89` undercounted a 96-document job
+
+Bedrock splits the counter in two — `numberOfNewDocumentsIndexed` **and**
+`numberOfModifiedDocumentsIndexed` — and the syncer read only the first:
+
+```
+numberOfNewDocumentsIndexed:      89
+numberOfModifiedDocumentsIndexed:  7   ← dropped on the floor
+                                  ──
+                                  96   = exactly the 96 changed bodies planned
+```
+
+The full statistics reconcile perfectly against the upload plan (191 objects =
+96 bodies + 95 sidecars), which is what makes the report's `89` provably wrong
+rather than merely suspicious.
+
+**The dangerous case is not this one.** A sync that only *edits* existing
+chunks — no new files, the ordinary state of a mature corpus — has
+`New = 0`, so the old reading prints **`indexed=0`**: identical to an ingestion
+that did nothing, at exactly the moment an operator is checking whether their
+edits took. `_indexed()` now sums both, and still returns `None` when Bedrock
+supplied neither, so "absent" stays distinguishable from "zero".
+
+### The stale-corpus warning fired on a file that produces zero chunks
+
+The sync printed `⚠ 1 corpus input(s) modified since the corpus was built:
+docs/FINDINGS.md — you will ingest stale text`. It was wrong. `warn_if_stale`
+walked all of `docs/**` by mtime, but **`docs/` is not the corpus**: the build
+allowlists directories and excludes named files, and records both in the
+manifest it already reads —
+
+```
+allowedDirectories : ['anatomy', 'exercise-science']
+excludedDocs       : FINDINGS.md  → "root-level doc — not in an allowlisted
+                                     knowledge directory"
+                     PM.md, LICENSE.md, positioning-kit.md,
+                     anatomy/referral-boundary.md, anatomy/traditional-boundary.md
+```
+
+`FINDINGS.md` contributes **nothing** to the 585 chunks. And by this repo's own
+convention findings are appended after almost every session — so a
+directory-level check fires on nearly every sync while being right almost
+never. That is self-defeating: the module's own comment already says *"a
+warning that is usually wrong gets ignored when it is right"*, about test
+files, and then the same trap was walked into one directory up.
+
+Fixed by consulting the manifest's declared contract instead of guessing
+(`feeds_the_corpus`), with an explicit fallback to over-warning when a manifest
+predates those keys — an operator can dismiss a spurious warning, but cannot
+recover from silently ingesting a stale corpus.
+
+**Why it was unverifiable.** `warn_if_stale` lived in `services/kb_sync/`, and
+`testpaths = ["packages/core/tests"]` — nothing under `services/` is collected,
+so the check had no tests and could not get any where it sat. It moved to
+`docpipe_core.kb_sync.corpus` (it is corpus logic reading the corpus manifest),
+following the same promotion as `agent.py` in c74898f. **A guard that lives
+where the test runner cannot see it is not a guard.** Worth auditing what else
+sits under `services/` and `scripts/` believing itself covered.
+
+### …and then the Aurora ingest crashed on the auto-pause we had already fixed elsewhere
+
+```
+ValidationException: ... The Aurora DB instance db-L3DM7APXX43HCTKXNZMEBRRQCQ is
+resuming after being auto-paused. Please wait a few seconds and try again.
+```
+
+**We fixed this exact failure on 2026-08-21 — for `Retrieve` only.** The
+retry lived in `KnowledgeBaseClient`, so the query path and the agentic loop
+were covered while `StartIngestionJob` had nothing, and the CLI died with a
+traceback *after* the upload had already run.
+
+The asymmetry is worth stating as a rule: **a scale-to-zero database has no
+"cold path" and "warm path" — every caller can be the one that wakes it.**
+`StartIngestionJob` is in fact *more* likely to hit a paused cluster than
+`Retrieve` is, because a sync runs minutes after a build, long past anything
+that might have kept the cluster up. We fixed the path we happened to be
+looking at that day and never asked which other callers touch the same
+database.
+
+Fixing it forced the right refactor. `is_retryable` had already migrated once
+(`agent.py` → `retrieval.py`) when it got its second caller, and the backoff
+loop is copied verbatim in `agent.py`, `retrieval.py` and `llm.py`. A fourth
+copy in `syncer.py` would have been the wrong answer, and importing the query
+path from the ingest path to learn how to wake a database is a dependency
+pointing backwards. Both now live in **`docpipe_core/aws.py`** — the retry
+policy is a property of the infrastructure, not of whoever calls it.
+
+`llm.py` deliberately keeps its own narrower set: it calls Bedrock Converse and
+never touches Aurora, so the auto-pause arm would be dead weight there.
+
+Pinned by four tests using the verbatim error string: a cold start succeeds, a
+cluster that never wakes still raises (retry, not swallow), the budget is
+respected exactly (1 attempt + 2 retries), and a *genuine* `ValidationException`
+— a bad `dataSourceId` — fails fast on the first attempt rather than sleeping
+through four retries for a misconfiguration that will never fix itself. That
+last one is why the match is on the resume sentence and not on the error code.
+
+## 2026-08-22 — the reingest doubled the graph and cost 4 questions of flat recall; every loss was already at the k=5 boundary
+
+Both stores now hold the corpus and agree exactly: **S3 Vectors 585 vectors,
+Aurora 585 rows / 585 non-null embeddings**, counted directly rather than
+trusted from a job status — `COMPLETE` wrote 0 vectors once before
+(2026-08-16), so the count is checked, not assumed. Jobs `FWU5IEPVHS`
+(S3 Vectors) and `TLI4RXLTWF` (Aurora), both `failed=0 skipped=0 deleted=0`.
+
+**Bedrock's ingest is incremental per-KB, not per-bucket.** Aurora was expected
+to re-embed all 585 because its last ingest was the 496-chunk corpus; it
+reported the *same* `89 new + 7 modified = 96` as S3 Vectors, because the 496
+documents it already held were unchanged in the bucket and it re-embedded none
+of them. Useful to know before budgeting a re-ingest: you pay for the diff.
+
+### What the corpus gained
+
+`make graph-index`, rebuilt from the deployed corpus (which for the first time
+equals the local build):
+
+| | before | after |
+|---|---|---|
+| nodes | 304 | **393** |
+| edges | 247 | **396** |
+| nerve nodes | 8 | **52** |
+| `supplies` edges | 23 | **172** |
+
+### What retrieval lost
+
+Single-shot, rerank off, semantic — same settings as the 496 baselines:
+
+| store | corpus | recall@5 | MRR |
+|---|---|---|---|
+| S3 Vectors | 496 | 0.7879 | 0.5634 |
+| S3 Vectors | **585** | **0.7273** | 0.5472 |
+| Aurora | 496 | 0.7879 | 0.5646 |
+| Aurora | **585** | **0.7424** | 0.5510 |
+
+**Four questions lost on S3 Vectors, three on Aurora, and none gained on
+either.** The diagnosis is in the prior ranks, not the topics:
+
+| question | stratum | rank at 496 | at 585 |
+|---|---|---|---|
+| `index-01` | graph-index | 3 | out |
+| `chain-02` | graph-chain | 4 | out (S3 Vectors only) |
+| `conn-05` | graph-connection | 5 | out |
+| `nerve-01` | graph-nerve | 5 | out |
+
+**Every single loss was already sitting at rank 3–5.** Nothing that was ranked
+1 or 2 moved. This is not a corpus-quality regression, it is *displacement*:
+89 new chunks entered the same embedding space and crowded the marginal
+answers out of a fixed k=5 window. `nerve-01` is the clearest case — 44 of the
+89 new chunks are the nerve registry, competing directly with the question that
+FINDINGS 2026-08-17 already recorded as fragile ("comes back with ulnar
+*territory* rather than the ulnar *nerve*").
+
+**The stated cost of growing a corpus, then: recall@k is not a property of the
+corpus, it is a property of the corpus *and* k.** Adding correct, well-graded
+chunks lowered it. Any future "the corpus grew, did retrieval improve?" has to
+compare per-question ranks, because the aggregate hides that nothing got worse
+— things got *crowded*.
+
+### Two measurement traps hit while producing the table above
+
+- **Aurora's MRR needs `--semantic-score-is-distance` or it reads as a
+  collapse.** First run reported MRR 0.2843 against a 0.5646 baseline, which
+  looks like catastrophe and is entirely an artifact: the flag is opt-in in
+  `kb_eval.py`, the 496 "scorefix" baseline was taken with it, and without it
+  the raw semantic list is scored worst-first. With it: **0.5510**. Recall@k is
+  unaffected — it is set membership within the top-k, and the candidate set is
+  correct either way — which is exactly why recall looked sane while MRR did
+  not. **A store-specific correction that is opt-in in the harness will be
+  forgotten; every Aurora row must carry it.**
+- **The eval defaults `rerank` OFF; `retrieve()` defaults it ON.** Every number
+  above is therefore a floor, not the path a user travels — the 2026-08-17
+  ruling made rerank the default in production. Comparing the raw rows is
+  correct for isolating corpus effects, and wrong for answering "did this hurt
+  anyone". Reranked rows follow.
+
+### The reranked sweep cannot be retried into working — it has to be paced
+
+The reranked run died after ~15 minutes with `ReadTimeoutError` and wrote no
+report at all. Three measurements, in the order they changed the diagnosis:
+
+1. **A reranked call takes 1.13 s.** Six back-to-back calls, 0.52–1.16 s each.
+   So a 60 s read timeout was never about the call being slow, and the
+   "reranking is expensive" hypothesis was wrong.
+2. **The quota is real: `L-11512E58` = 3 req/min, ACCOUNT level,
+   `Adjustable: false`** (re-verified live 2026-08-22). Exactly three calls
+   succeed, and the fourth fails.
+3. **Overage is a clean `ThrottlingException` in ~5 s, not a hang.** Which
+   means it *was* being retried — by two layers at once.
+
+**And that is the trap.** `ThrottlingException` is in `_RETRYABLE_CODES`, so
+`with_backoff` retries it — sleeping 1+2+4+8 = **15 s** across four attempts.
+A 3/min bucket needs up to **20 s**. The retry budget is not occasionally
+unlucky, it is *systematically* just short: every retry chain is guaranteed to
+exhaust itself while still throttled. Underneath, botocore's own retry layer
+(no `Config` is set anywhere in this repo, so max_attempts defaults to 5) is
+retrying the same call independently. Two uncoordinated retry loops storming a
+fixed-rate bucket, and the transient ReadTimeoutError landed inside that storm
+and took the whole run with it.
+
+**A token bucket refills on a clock. No amount of retrying hurries it.** The
+fix is to pace: `score_question_set` now waits `60 / COHERE_RERANK_RPM` between
+reranked questions, and does nothing at all on the raw path (which never
+touches Cohere and would otherwise go from 90 seconds to 22 minutes for no
+reason). `rerank_rpm=0` disables pacing for the day the quota changes — the
+number is AWS's, not ours, and a harness that hardcodes it becomes the
+bottleneck.
+
+**A 66-question reranked sweep is ~22 minutes, and that is a floor set by AWS.**
+Worth knowing before treating a reranked eval as something to run casually,
+and worth knowing that the two stores share one account-level bucket, so their
+sweeps must run in sequence — in parallel each would see half the rate and
+both would throttle.
+
+Generalisable: **retry handles a failure that will clear on its own; pacing
+handles a limit that will not.** Retrying into a rate limit converts a slow
+success into a fast failure, and the symptom surfaces far from the cause — here
+as a read timeout, four layers away from a quota.
+
+### Reranking absorbs the dilution entirely — and Aurora cannot run that path at all
+
+**S3 Vectors, the production path (rerank ON by default since 2026-08-17):**
+
+| corpus | path | recall@5 | MRR |
+|---|---|---|---|
+| 496 | raw | 0.7879 | 0.5634 |
+| 585 | raw | 0.7273 | 0.5472 |
+| 585 | **reranked** | **0.7879** | **0.6571** |
+
+**The regression does not exist on the path users travel.** Recall returns
+exactly to the 496 baseline and MRR is materially better than it has ever been
+raw. Per question, rerank recovers six and costs two:
+
+```
++ chain-02 (r4)  conn-06 (r4)  conn-07 (r1)  conn-09 (r2)  index-01 (r1)  nerve-01 (r5)
+- biblio-01      chain-05
+```
+
+Three of the recoveries — `index-01`, `nerve-01`, `chain-02` — are precisely
+the chunks dilution had pushed past rank 5, and the cross-encoder pulls
+`index-01` from *out of the window* to **rank 1**. Three more (`conn-06/07/09`)
+were misses at 496 too, so this is not only recovery. `biblio-01` is the loss
+the 2026-08-17 ruling already named and accepted; `chain-05` is new and
+unexplained. Against the 496 raw baseline the reranked path is missing only
+`biblio-01`, `chain-05`, `conn-05`.
+
+**Two safety numbers moved in the right direction and neither is in the
+headline metric.** Confabulations on the `gap-*` questions fell **6 → 3**, and
+abstention on the `not-covered` stratum went **0.0 → 0.6**. Reranking makes the
+system likelier to return nothing rather than the nearest wrong thing.
+
+So the honest summary of the reingest is: **the raw number got worse, the
+shipped number did not, and the corpus got a graph that is 60% larger.**
+
+### The Aurora KB has been 403-ing the default retrieval path since it was created
+
+The paired Aurora run never scored a question:
+
+```
+AccessDeniedException: .../docpipe-dev-kb-aurora-role/BedrockReranking-… is not
+authorized to perform: bedrock:Rerank
+```
+
+Retrieve-with-rerank runs the rerank step under the **KB's service role**, not
+the caller's. `kb.py` learned that on 2026-08-16 and carries both
+`RerankRetrievedResults` and `InvokeRerankModel`. `kb_aurora.py`, added
+2026-08-20, carries neither — **the lesson was learned once and not applied to
+the second knowledge base.**
+
+`retrieve()` defaults `rerank=True`, so this is not an eval inconvenience: any
+caller pointed at Aurora with default arguments has been getting a 403 for two
+days. It stayed invisible because every Aurora measurement taken in that window
+— the 496 baseline, the score-direction work, the six agentic runs — passes
+`rerank=False`, and the agentic loop supplies its own tool arguments.
+
+**A correction falls out of it.** `retrieval.py` claimed "the HYBRID and rerank
+paths order correctly on **both stores**" (2026-08-20). HYBRID was measured on
+both. The Aurora rerank half was not measured and *could not have been*, since
+that path 403s. Corrected in place. Until an Aurora reranked baseline exists,
+nothing is known about how that path orders — and the `semantic_score_is_distance`
+question for reranked Aurora results is therefore still open.
+
+Fixed in `infra/components/kb_aurora.py`; **needs a `pulumi up` to take
+effect.** Verified the change is a strict superset of the live policy — all
+five existing Sids retained, two added — because Pulumi diffs the statement
+array positionally and inserting at index 1 renders as if four statements were
+rewritten.
+
+**The class of bug: a second implementation of a thing that already exists does
+not inherit its bug fixes.** `kb.py` and `kb_aurora.py` are two knowledge bases
+with one contract between them, and the only thing keeping their IAM in step is
+that someone remembers. Worth a test that asserts the two role policies grant
+the same Bedrock actions.

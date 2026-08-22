@@ -50,7 +50,9 @@ tested against a fake runtime.
 from __future__ import annotations
 
 import json
+import time
 from collections import defaultdict
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -58,6 +60,23 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .kb_sync import DEFAULT_PREFIX
 from .retrieval import DEFAULT_RERANK_POOL, KnowledgeBaseClient, RetrievedPassage
+
+# Cohere Rerank 3.5 on-demand: 3 requests per minute, ACCOUNT level, and
+# `Adjustable: false` (service-quotas `L-11512E58`, re-verified 2026-08-22).
+#
+# Pace against it rather than retry through it. Measured: three reranked calls
+# succeed back to back in ~1.2 s each, the fourth returns a clean
+# ThrottlingException in ~5 s, and the bucket refills on a clock no amount of
+# retrying hurries. `with_backoff` sleeps 1+2+4+8 = 15 s over four attempts,
+# which is *systematically* just short of the 20 s a 3/min bucket needs — so a
+# reranked sweep degenerates into a retry storm, made worse by botocore's own
+# retry layer running underneath ours. The 2026-08-22 reranked run died that
+# way: a transient ReadTimeoutError landed inside the storm and took a
+# 15-minute run with it, writing no report.
+#
+# A 66-question reranked sweep is therefore ~22 minutes, and that is a floor
+# set by AWS, not a slow harness.
+COHERE_RERANK_RPM = 3.0
 
 # ── The stamp, as `stamp.ts` writes it ─────────────────────────────────────
 #
@@ -253,6 +272,9 @@ def score_question_set(
     search_type: str | None = None,
     prefix: str = DEFAULT_PREFIX,
     require_ratified: bool = True,
+    rerank_rpm: float = COHERE_RERANK_RPM,
+    sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
 ) -> EvalReport:
     """Run every question through the shipped retrieval path and score it.
 
@@ -275,7 +297,15 @@ def score_question_set(
         )
 
     results: list[QuestionResult] = []
+    # Pace, don't retry. See COHERE_RERANK_RPM.
+    spacing = 60.0 / rerank_rpm if (rerank and rerank_rpm) else 0.0
+    last_call: float | None = None
     for question in question_set.questions:
+        if spacing and last_call is not None:
+            wait = spacing - (clock() - last_call)
+            if wait > 0:
+                sleep(wait)
+        last_call = clock()
         passages = client.retrieve(
             question.question,
             top_k=k,

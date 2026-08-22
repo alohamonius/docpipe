@@ -47,12 +47,14 @@ class AuroraKnowledgeBase(pulumi.ComponentResource):
         embedding_model_id: str = "amazon.titan-embed-text-v2:0",
         embedding_dimension: int = 1024,
         table_name: str = "bedrock_integration.bedrock_kb",
+        rerank_model_id: str = "cohere.rerank-v3-5:0",
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         super().__init__("docpipe:kb:AuroraKnowledgeBase", prefix, None, opts)
         me = pulumi.ResourceOptions(parent=self)
 
         embedding_model_arn = f"arn:aws:bedrock:{region}::foundation-model/{embedding_model_id}"
+        rerank_model_arn = f"arn:aws:bedrock:{region}::foundation-model/{rerank_model_id}"
 
         role = aws.iam.Role(
             f"{prefix}-kb-aurora-role",
@@ -87,6 +89,26 @@ class AuroraKnowledgeBase(pulumi.ComponentResource):
                             "Effect": "Allow",
                             "Action": "bedrock:InvokeModel",
                             "Resource": embedding_model_arn,
+                        },
+                        # Retrieve-with-rerank runs the rerank step under THIS
+                        # role, not the caller's. `kb.py` learned that on
+                        # 2026-08-16 and this component, added 2026-08-20, did
+                        # not inherit it — so `retrieve(rerank=True)`, which is
+                        # the DEFAULT, returned 403 against Aurora for two days
+                        # while every raw-path measurement looked healthy
+                        # (measured 2026-08-22). bedrock:Rerank takes no
+                        # resource ARN; the model grant below is what scopes it.
+                        {
+                            "Sid": "RerankRetrievedResults",
+                            "Effect": "Allow",
+                            "Action": "bedrock:Rerank",
+                            "Resource": "*",
+                        },
+                        {
+                            "Sid": "InvokeRerankModel",
+                            "Effect": "Allow",
+                            "Action": "bedrock:InvokeModel",
+                            "Resource": rerank_model_arn,
                         },
                         {
                             "Sid": "ReadSourceBucket",

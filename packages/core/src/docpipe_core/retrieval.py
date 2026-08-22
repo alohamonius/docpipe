@@ -103,10 +103,17 @@ class KnowledgeBaseClient:
         sorts descending, so the semantic result list arrives **worst-first**
         (63/66 golden questions came back in exactly reversed order; the
         candidate set itself is the correct top-k). The S3 Vectors path returns
-        ``(1 + cosine)/2`` and orders correctly, and the HYBRID and rerank
-        paths order correctly on both stores — so the flag re-sorts only the
+        ``(1 + cosine)/2`` and orders correctly, so the flag re-sorts only the
         raw semantic path, ascending. Per-KB because score semantics are a
         property of the storage backend, not of a call.
+
+        CORRECTED 2026-08-22. This used to add "and the HYBRID and rerank paths
+        order correctly on **both stores**". HYBRID was measured on both; the
+        Aurora rerank half was never measured and could not have been — the
+        Aurora KB role was provisioned without ``bedrock:Rerank`` and returns
+        403 on that path (fixed in ``infra/components/kb_aurora.py``, needs an
+        apply). Until an Aurora reranked baseline exists, nothing is known
+        about how that path orders.
         """
         self.knowledge_base_id = knowledge_base_id
         self.semantic_score_is_distance = semantic_score_is_distance
