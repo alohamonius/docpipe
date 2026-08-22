@@ -105,6 +105,17 @@ class AgentSession(BaseModel):
         """True when the loop ended on our bound, not the model's ``end_turn``."""
         return self.stop_reason == "tool_use"
 
+    @property
+    def guardrail_intervened(self) -> bool:
+        """True when the guardrail replaced the answer with its own refusal.
+
+        Derived from ``stop_reason`` rather than stored, so it cannot drift out
+        of step with it. A caller that logs or scores answers needs to tell a
+        refusal apart from a reply — they are both non-empty strings, and the
+        guardrail's text reads like a perfectly ordinary answer.
+        """
+        return self.stop_reason == "guardrail_intervened"
+
 
 class KbAgent:
     """A knowledge-base-grounded agent: one tool, model-driven retrieval."""
@@ -121,6 +132,8 @@ class KbAgent:
         search_type: str | None = None,
         max_tokens: int = 1024,
         temperature: float = 0.3,
+        guardrail_id: str | None = None,
+        guardrail_version: str = "DRAFT",
         max_retries: int = 4,
         sleep: Callable[[float], None] = time.sleep,
         rng: Callable[[], float] = random.random,
@@ -137,6 +150,8 @@ class KbAgent:
         self._system = system + " Use the search_kb tool for facts."
         self._max_tokens = max_tokens
         self._temperature = temperature
+        self._guardrail_id = guardrail_id
+        self._guardrail_version = guardrail_version
         self._max_retries = max_retries
         self._sleep = sleep
         self._rng = rng
@@ -152,6 +167,34 @@ class KbAgent:
                     raise
                 self._sleep(2**attempt + self._rng())
         raise RuntimeError("unreachable")
+
+    def _guardrail_kwargs(self) -> dict[str, Any]:
+        """``guardrailConfig``, or nothing when no guardrail is configured.
+
+        A provisioned guardrail enforces nothing on its own — it applies only to
+        calls that name it. `llm.py` has passed this since the guardrail was
+        built; this loop did not, so **the agentic path — the best-performing
+        path, and the one a chat would ship — ran unguarded from the day it was
+        written until 2026-08-23.** The non-diagnostic stance rested entirely on
+        a system prompt, which prompt injection is free to argue with.
+
+        Applied on EVERY iteration, not just the last. The model can emit text
+        on a tool-use turn, and an intervention has to be able to stop the loop
+        before another retrieval round, not after the final answer is composed.
+
+        Deliberately no ``guardContent`` tagging of tool results, matching
+        `llm.py`. Whether scanning retrieved clinical passages causes false
+        refusals is a question for measurement, not for a guess in a comment —
+        see the agentic re-baseline. The role needs `bedrock:ApplyGuardrail`.
+        """
+        if not self._guardrail_id:
+            return {}
+        return {
+            "guardrailConfig": {
+                "guardrailIdentifier": self._guardrail_id,
+                "guardrailVersion": self._guardrail_version,
+            }
+        }
 
     def _render(self, passages: list[RetrievedPassage]) -> str:
         """What the model reads back. 600 chars/passage: enough to ground an
@@ -180,16 +223,21 @@ class KbAgent:
                         "maxTokens": self._max_tokens,
                         "temperature": self._temperature,
                     },
+                    **self._guardrail_kwargs(),
                 )
             )
             usage = response.get("usage", {})
             tokens_in += usage.get("inputTokens", 0)
             tokens_out += usage.get("outputTokens", 0)
             stop = response.get("stopReason")
-            output_message = response["output"]["message"]
+            # `output.message` is read only once we know we are continuing.
+            # A guardrail intervention is a stop reason this loop never saw
+            # before, and indexing into a response shape we have not observed
+            # would turn a refusal — the safe outcome — into a KeyError.
             if stop != "tool_use":
                 answer = extract_answer_text(response)
                 break
+            output_message = response["output"]["message"]
 
             messages.append({"role": "assistant", "content": output_message["content"]})
             tool_results: list[dict[str, Any]] = []

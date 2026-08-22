@@ -196,3 +196,88 @@ def test_a_session_serialises_for_reports() -> None:
     dumped = session.model_dump()
     assert dumped["wall_s"] == 1.5
     assert dumped["stop_reason"] == "end_turn"
+
+
+# ── The guardrail on the agentic path ───────────────────────────────────────
+# A provisioned guardrail enforces nothing on its own; it applies only to calls
+# that name it. `llm.py` has passed `guardrailConfig` since the guardrail was
+# built, and this loop did not — so the best-performing path, the one a chat
+# would ship, ran with no safety filter from the day it was written until
+# 2026-08-23. Its non-diagnostic stance rested on a system prompt alone.
+
+
+def guardrail_blocked(text: str = "I can't help with that.") -> dict[str, Any]:
+    """A Converse response with the guardrail's own replacement text."""
+    return {
+        "stopReason": "guardrail_intervened",
+        "output": {"message": {"role": "assistant", "content": [{"text": text}]}},
+        "usage": {"inputTokens": 40, "outputTokens": 12},
+    }
+
+
+def test_no_guardrail_configured_sends_no_guardrail_config() -> None:
+    """Unset must mean absent, not an empty block Bedrock would reject."""
+    bedrock = FakeBedrock([end_turn("Drink water.")])
+    agent(bedrock, FakeKbRuntime([])).ask("hydration?")
+
+    assert "guardrailConfig" not in bedrock.calls[0]
+
+
+def test_the_guardrail_reaches_every_converse_call_not_just_the_last() -> None:
+    """The model can emit text on a tool-use turn, so an intervention has to be
+    able to stop the loop before another retrieval round — not only when the
+    final answer is composed."""
+    bedrock = FakeBedrock([tool_turn(("t1", "scalene anatomy", None)), end_turn("The scalenes …")])
+    session = agent(
+        bedrock,
+        FakeKbRuntime([kb_result("Scalenes attach to the first rib.", "graph/scalenes.md")]),
+        guardrail_id="gr-1",
+        guardrail_version="3",
+    ).ask("scalenes?")
+
+    assert len(bedrock.calls) == 2  # one tool round, then the answer
+    for call in bedrock.calls:
+        assert call["guardrailConfig"] == {
+            "guardrailIdentifier": "gr-1",
+            "guardrailVersion": "3",
+        }
+    assert not session.guardrail_intervened
+
+
+def test_the_version_defaults_to_draft_like_the_single_shot_path() -> None:
+    bedrock = FakeBedrock([end_turn("ok")])
+    agent(bedrock, FakeKbRuntime([]), guardrail_id="gr-1").ask("hi")
+
+    assert bedrock.calls[0]["guardrailConfig"]["guardrailVersion"] == "DRAFT"
+
+
+def test_an_intervention_stops_the_loop_and_is_reported() -> None:
+    """The refusal must be distinguishable from a reply. Both are non-empty
+    strings and the guardrail's text reads like an ordinary answer, so a caller
+    that logs or scores answers cannot tell them apart without this flag."""
+    bedrock = FakeBedrock([guardrail_blocked("I can't provide a diagnosis.")])
+    session = agent(bedrock, FakeKbRuntime([]), guardrail_id="gr-1").ask("do I have a torn ACL?")
+
+    assert session.guardrail_intervened
+    assert session.answer == "I can't provide a diagnosis."
+    assert session.tool_calls == []
+    assert len(bedrock.calls) == 1  # stopped, did not iterate on
+
+
+def test_an_intervention_mid_loop_does_not_retrieve_again() -> None:
+    """Blocked on the second turn, after one tool round. The loop must not run
+    another retrieval — an intervention is a stop, not a skipped turn."""
+    kb = FakeKbRuntime([kb_result("Scalenes attach to the first rib.", "graph/scalenes.md")])
+    bedrock = FakeBedrock([tool_turn(("t1", "scalenes", None)), guardrail_blocked()])
+    session = agent(bedrock, kb, guardrail_id="gr-1").ask("scalenes?")
+
+    assert session.guardrail_intervened
+    assert len(session.tool_calls) == 1  # the one before the block, and no more
+    assert len(bedrock.calls) == 2
+
+
+def test_a_normal_answer_is_not_reported_as_intervened() -> None:
+    bedrock = FakeBedrock([end_turn("The scalenes attach to the first rib.")])
+    session = agent(bedrock, FakeKbRuntime([]), guardrail_id="gr-1").ask("scalenes?")
+
+    assert not session.guardrail_intervened

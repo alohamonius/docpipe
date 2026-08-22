@@ -14,17 +14,19 @@ page can point at that instead and this script becomes redundant.
 Ids resolve from the dev stack, so it works right after ``make infra-up``;
 every one can be overridden by flag or environment variable.
 
-Two asymmetries between the modes that the page reports rather than hides,
+One asymmetry between the modes that the page reports rather than hides,
 because a toggle that silently does nothing is worse than no toggle:
 
-* **The agentic path applies no guardrail.** ``llm.py`` passes
-  ``guardrailConfig`` on every Converse call; ``agent.py`` does not, so
-  ``KbAgent`` reaches the model with the system prompt as its only safety
-  stance. On health content that is a real gap, not a detail — ``llm.py``'s own
-  comment says as much. Single-shot is guardrailed; agentic is not.
 * **The agentic path ignores ``rerank``.** ``agent.py`` hardcodes
   ``rerank=False`` on its tool-side retrieve, so the checkbox applies to
   single-shot only.
+
+RESOLVED 2026-08-23 — this used to list a second asymmetry: "the agentic path
+applies no guardrail". It was true, and finding it was what this playground was
+for. ``KbAgent`` now takes ``guardrail_id`` and sends ``guardrailConfig`` on
+every Converse call, and the page passes the configured guardrail to both
+modes, so they are guarded alike. An intervention surfaces as
+``AgentSession.guardrail_intervened``.
 """
 
 from __future__ import annotations
@@ -171,12 +173,15 @@ def answer(config: dict[str, str | None], req: dict[str, Any]) -> dict[str, Any]
     if mode == "agentic":
         if req.get("rerank"):
             notes.append("rerank ignored — agent.py hardcodes rerank=False")
-        notes.append("no guardrail on this path — agent.py sends no guardrailConfig")
+        if not config.get("guardrail_id"):
+            notes.append("no guardrail configured — set GUARDRAIL_ID to enforce one")
         agent = KbAgent(
             kb,
             model_id=config["agent_model_id"] or DEFAULT_AGENT_MODEL_ID,
             top_k=top_k,
             search_type=search_type,
+            guardrail_id=config.get("guardrail_id") or None,
+            guardrail_version=config.get("guardrail_version") or "DRAFT",
         )
         session = agent.ask(question)
         return {
@@ -188,6 +193,7 @@ def answer(config: dict[str, str | None], req: dict[str, Any]) -> dict[str, Any]
             "output_tokens": session.output_tokens,
             "stop_reason": session.stop_reason,
             "hit_iteration_bound": session.hit_iteration_bound,
+            "guardrail_intervened": session.guardrail_intervened,
             "tool_calls": [
                 {
                     "query": call.query,
