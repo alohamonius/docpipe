@@ -2339,3 +2339,98 @@ default.**
 
 Cheapest next test if the graph is to be defended: a question set that
 *requires* two hops. If it does not win there, it does not win.
+
+## 2026-08-23 — the ef_search sweep is a flat line: 585 vectors is too small for HNSW to approximate
+
+The sweep PLAN called "the strongest single exhibit in the whole project" ran
+(`scripts/aurora_sql_eval.py`, direct SQL over the RDS Data API, 66 ratified
+questions, one transaction per value so `SET LOCAL hnsw.ef_search` actually
+holds). The curve:
+
+| ef_search | recall@4 | recall@5 | recall@10 | MRR@10 | p50 | p95 |
+|---|---|---|---|---|---|---|
+| 10 | 0.7869 | 0.8033 | 0.8689 | 0.6048 | 0.154 s | 0.223 s |
+| 40 | 0.7869 | 0.8033 | 0.8689 | 0.6048 | 0.153 s | 0.223 s |
+| 100 | 0.7869 | 0.8033 | 0.8689 | 0.6048 | 0.155 s | 0.225 s |
+| 200 | 0.7869 | 0.8033 | 0.8689 | 0.6048 | 0.155 s | 0.224 s |
+
+Not merely equal in aggregate — **zero per-question rank changes between ef=10
+and ef=200**. At n=585 the beam at ef=10 already reaches everything the graph
+has; there is no approximation error to trade against latency, so the knob has
+nothing to turn. The recall/latency trade-off the exhibit was designed to plot
+exists only at corpus sizes where HNSW actually approximates. The honest chart
+is the flat line, labeled with why it is flat.
+
+**The salvage is the instrument decomposition.** Same store, same corpus, same
+questions: direct SQL p50 **0.154 s**; Bedrock Retrieve on Aurora, warm, p50
+**0.523 s** (2026-08-20); Bedrock Retrieve on S3 Vectors **0.960 s**. About
+70% of the shipped Aurora path's latency is Bedrock overhead, not Postgres —
+and the sweep instrument cannot see the auto-pause resume a first user request
+pays, which is the number that actually hurts.
+
+Consistency check that both instruments measure the same thing: sweep recall@5
+is scored on the 61 answerable questions; the shipped-path report scores all
+66. 0.8033 × 61/66 = **0.7424 exactly** — the 2026-08-22 Aurora single-shot
+number. Rank-for-rank agreement, different denominators. (Report the
+denominator with the number; the two "recalls" are 6 points apart while being
+the same result.)
+
+Also identical on both instruments: all six `gap-*` questions return forbidden
+chunks — raw top-k has no abstention, and neither does the shipped single-shot
+path. Nothing new is lost by going direct.
+
+Evidence: `docs/baselines/2026-08-23-aurora-585-efsearch-sweep.json`.
+
+## 2026-08-23 — 304 near-duplicate pairs, and every one of them is the graph registry talking to itself
+
+The self-join only Aurora can run (`a.embedding <=> b.embedding < 0.15`,
+585 chunks, 170,820 pairs examined): **304 pairs** under the threshold.
+The structure of those pairs is the finding:
+
+- **Prose is clean.** Every pair involving a non-graph chunk is two sections
+  of the *same* authored document — adjacent-section continuity, not
+  redundancy. **Zero cross-document prose pairs.**
+- **Sibling nerves are where the embedder runs out of resolution.** ~93 pairs
+  are `body-graph-nerve--X` vs `--Y` for anatomically adjacent nerves. The
+  closest pair in the corpus is proper vs common palmar digital median at
+  **0.0133** — genuinely different content the embedding all but cannot
+  separate. medial/lateral antebrachial cutaneous 0.047, trapezoid/trapezium
+  0.048: the classic confusables, confirmed confusable in vector space.
+- **`--sources` chunks collide with their own document's content sections**
+  (coccygeus sources ↔ anatomy at 0.036) and with other documents' sources.
+  The bibliography does not just dilute its own chunk (the 2026-08-14
+  argument) — it manufactures near-duplicates across the registry.
+
+Answer to "are my 585 chunks distinct": the prose corpus, yes. The nerve
+registry, no — and that is measured confusability sitting exactly where the
+`nerve-*` stratum misses live. Evidence:
+`docs/baselines/2026-08-23-aurora-585-near-dupes.json`.
+
+## 2026-08-23 — the $ column: the store is 1–3% of the marginal cost, and the Price List now has a rerank SKU
+
+RETRACTION first: "the Price List API carries no rerank SKU" (2026-08-13, and
+repeated in PLAN) is no longer true. `AmazonBedrockFoundationModels` now
+carries `Cohere Rerank v3.5 (Amazon Bedrock Edition)` at **$0.002 per search
+unit** — and the pricing page's $2.00/1k queries agrees, two independent
+sources. DeepSeek and Titan are still absent from the Price List (that service
+code lists third-party models only, and not all); their rates below are from
+the pricing page, 2026-08-23: DeepSeek V3.2 $0.62/$1.85 per 1M in/out, Titan
+Text Embeddings V2 $0.02 per 1M (corroborated: 420k-token corpus ≈ 1¢).
+
+Worked numbers (rates + arithmetic in
+`docs/baselines/2026-08-23-cost-column.md`, sizes measured live):
+
+| | S3 Vectors | Aurora |
+|---|---|---|
+| at rest / mo | ≈ $0.00 (3.5 MB logical) | ≈ **$0.12** (the ACU floor; 21 MB storage is noise) |
+| single-shot query | $0.000056 | $0.000009 warm; **~$0.005 per cold visit** (the wake, not the query) |
+| + rerank | +$0.002 — 36× the retrieve it sits on | same |
+| agentic question | ≈ $0.006 | ≈ $0.006 |
+
+The verdict the column supports: **the stores are not a cost decision any more
+than they were a recall decision.** DeepSeek is ~100× the retrieval it drives
+($5.50 vs $0.06 per 1,000 questions); the most expensive retrieval component
+is the reranker, not the store; and Aurora's cost is shaped by traffic
+*pattern* (steady amortizes the wake; sparse pays ~$0.005 per cold visit)
+while S3 Vectors is flat per-request — the only regime where the store choice
+shows up in money at all.

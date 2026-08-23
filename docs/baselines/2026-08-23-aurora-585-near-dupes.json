@@ -1,0 +1,1530 @@
+{
+  "mode": "near_dupes",
+  "instrument": "direct SQL via RDS Data API \u2014 NOT the Bedrock Retrieve path",
+  "chunks": 585,
+  "threshold": 0.15,
+  "pair_count": 304,
+  "pairs_listed": 304,
+  "pairs": [
+    {
+      "a": "graph/body-graph-nerve--proper_palmar_digital_median.md",
+      "b": "graph/body-graph-nerve--common_palmar_digital_median.md",
+      "cosine_distance": 0.0133
+    },
+    {
+      "a": "graph/body-graph-connection--coccygeus--sources.md",
+      "b": "graph/body-graph-connection--coccygeus--anatomy.md",
+      "cosine_distance": 0.0357
+    },
+    {
+      "a": "graph/body-graph-connection--flexor_digiti_minimi_brevis_foot--sources.md",
+      "b": "graph/body-graph-connection--flexor_digiti_minimi_brevis_foot--key-clinical-connections.md",
+      "cosine_distance": 0.0405
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_brachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--medial_antebrachial_cutaneous.md",
+      "cosine_distance": 0.0443
+    },
+    {
+      "a": "graph/body-graph-connection--obturator_externus--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--obturator_externus--sources.md",
+      "cosine_distance": 0.0454
+    },
+    {
+      "a": "graph/body-graph-nerve--inferior_gluteal.md",
+      "b": "graph/body-graph-nerve--superior_gluteal.md",
+      "cosine_distance": 0.0461
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_sural.md",
+      "b": "graph/body-graph-nerve--lateral_sural_cutaneous.md",
+      "cosine_distance": 0.0472
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_antebrachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--lateral_antebrachial_cutaneous.md",
+      "cosine_distance": 0.0473
+    },
+    {
+      "a": "graph/body-graph-nerve--deep_peroneal.md",
+      "b": "graph/body-graph-nerve--common_peroneal.md",
+      "cosine_distance": 0.0474
+    },
+    {
+      "a": "graph/body-graph-structure--trapezoid.md",
+      "b": "graph/body-graph-structure--trapezium.md",
+      "cosine_distance": 0.0478
+    },
+    {
+      "a": "graph/body-graph-nerve--lateral_femoral_cutaneous.md",
+      "b": "graph/body-graph-nerve--posterior_femoral_cutaneous.md",
+      "cosine_distance": 0.0509
+    },
+    {
+      "a": "graph/body-graph-connection--plantaris--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--plantaris--sources.md",
+      "cosine_distance": 0.0526
+    },
+    {
+      "a": "graph/body-graph-connection--dorsal_interossei_foot--anatomy.md",
+      "b": "graph/body-graph-connection--dorsal_interossei_foot--key-clinical-connections.md",
+      "cosine_distance": 0.0532
+    },
+    {
+      "a": "graph/body-graph-connection--internal_pterygoideus--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--internal_pterygoideus--anatomy.md",
+      "cosine_distance": 0.0548
+    },
+    {
+      "a": "graph/body-graph-connection--coccygeus--sources.md",
+      "b": "graph/body-graph-connection--coccygeus--key-clinical-connections.md",
+      "cosine_distance": 0.0556
+    },
+    {
+      "a": "anatomy/evidence-honesty--03-the-scale.md",
+      "b": "anatomy/evidence-honesty--02-the-scale.md",
+      "cosine_distance": 0.0562
+    },
+    {
+      "a": "graph/body-graph-connection--coccygeus--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--coccygeus--anatomy.md",
+      "cosine_distance": 0.057
+    },
+    {
+      "a": "graph/body-graph-connection--platysma--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--platysma--sources.md",
+      "cosine_distance": 0.0577
+    },
+    {
+      "a": "graph/body-graph-connection--flexor_hallucis_brevis--sources.md",
+      "b": "graph/body-graph-connection--flexor_hallucis_brevis--key-clinical-connections.md",
+      "cosine_distance": 0.0584
+    },
+    {
+      "a": "graph/body-graph-nerve--dorsal_digital_radial.md",
+      "b": "graph/body-graph-nerve--superficial_branch_radial.md",
+      "cosine_distance": 0.0586
+    },
+    {
+      "a": "graph/body-graph-nerve--superficial_peroneal.md",
+      "b": "graph/body-graph-nerve--common_peroneal.md",
+      "cosine_distance": 0.059
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_sural.md",
+      "b": "graph/body-graph-nerve--sural_communicating.md",
+      "cosine_distance": 0.0599
+    },
+    {
+      "a": "graph/body-graph-connection--plantar_interossei--sources.md",
+      "b": "graph/body-graph-connection--plantar_interossei--key-clinical-connections.md",
+      "cosine_distance": 0.06
+    },
+    {
+      "a": "graph/body-graph-connection--iliacus--sources.md",
+      "b": "graph/body-graph-connection--iliacus--key-clinical-connections.md",
+      "cosine_distance": 0.0603
+    },
+    {
+      "a": "graph/body-graph-connection--subclavius--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--subclavius--sources.md",
+      "cosine_distance": 0.0621
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_brachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--posterior_brachial_cutaneous.md",
+      "cosine_distance": 0.0624
+    },
+    {
+      "a": "graph/body-graph-chain--DFAL.md",
+      "b": "graph/body-graph-chain--DBAL.md",
+      "cosine_distance": 0.0632
+    },
+    {
+      "a": "graph/body-graph-connection--serratus_posterior_inferior--sources.md",
+      "b": "graph/body-graph-connection--serratus_posterior_superior--sources.md",
+      "cosine_distance": 0.0636
+    },
+    {
+      "a": "graph/body-graph-connection--lumbricals_foot--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--lumbricals_foot--anatomy.md",
+      "cosine_distance": 0.0646
+    },
+    {
+      "a": "graph/body-graph-connection--rectus_capitis_anterior--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--rectus_capitis_anterior--sources.md",
+      "cosine_distance": 0.0649
+    },
+    {
+      "a": "graph/body-graph-connection--rectus_capitis_lateralis--sources.md",
+      "b": "graph/body-graph-connection--rectus_capitis_lateralis--anatomy.md",
+      "cosine_distance": 0.0656
+    },
+    {
+      "a": "graph/body-graph-connection--plantar_interossei--anatomy.md",
+      "b": "graph/body-graph-connection--plantar_interossei--sources.md",
+      "cosine_distance": 0.0658
+    },
+    {
+      "a": "graph/body-graph-connection--plantar_interossei--anatomy.md",
+      "b": "graph/body-graph-connection--dorsal_interossei_foot--anatomy.md",
+      "cosine_distance": 0.0662
+    },
+    {
+      "a": "graph/body-graph-structure--metacarpal_1.md",
+      "b": "graph/body-graph-structure--metacarpal.md",
+      "cosine_distance": 0.0669
+    },
+    {
+      "a": "graph/body-graph-nerve--deep_peroneal.md",
+      "b": "graph/body-graph-nerve--superficial_peroneal.md",
+      "cosine_distance": 0.0677
+    },
+    {
+      "a": "graph/body-graph-nerve--lateral_sural_cutaneous.md",
+      "b": "graph/body-graph-nerve--sural_communicating.md",
+      "cosine_distance": 0.0689
+    },
+    {
+      "a": "graph/body-graph-chain--SFAL.md",
+      "b": "graph/body-graph-chain--DFAL.md",
+      "cosine_distance": 0.0691
+    },
+    {
+      "a": "graph/body-graph-nerve--posterior_brachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--lateral_antebrachial_cutaneous.md",
+      "cosine_distance": 0.0693
+    },
+    {
+      "a": "graph/body-graph-connection--gluteus_minimus--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--gluteus_minimus--sources.md",
+      "cosine_distance": 0.0717
+    },
+    {
+      "a": "graph/body-graph-connection--sternothyroid--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--sternothyroid--anatomy.md",
+      "cosine_distance": 0.0719
+    },
+    {
+      "a": "graph/body-graph-chain--SBAL.md",
+      "b": "graph/body-graph-chain--DBAL.md",
+      "cosine_distance": 0.072
+    },
+    {
+      "a": "graph/body-graph-connection--semispinalis_thoracis--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--semispinalis_thoracis--anatomy.md",
+      "cosine_distance": 0.0726
+    },
+    {
+      "a": "graph/body-graph-connection--triceps-medial_head.md",
+      "b": "graph/body-graph-connection--triceps-lateral_head.md",
+      "cosine_distance": 0.0727
+    },
+    {
+      "a": "graph/body-graph-connection--abductor_digiti_minimi--anatomy.md",
+      "b": "graph/body-graph-connection--abductor_digiti_minimi--sources.md",
+      "cosine_distance": 0.073
+    },
+    {
+      "a": "exercise-science/02-triangulation-report--07-detail-non-exact-primary-agreement.md",
+      "b": "exercise-science/02-triangulation-report--06-detail-non-exact-primary-agreement.md",
+      "cosine_distance": 0.0734
+    },
+    {
+      "a": "graph/body-graph-connection--superior_gemellus--anatomy.md",
+      "b": "graph/body-graph-connection--inferior_gemellus.md",
+      "cosine_distance": 0.0741
+    },
+    {
+      "a": "graph/body-graph-entrapment--pronator_teres.md",
+      "b": "graph/body-graph-entrapment--pronator_teres--sources.md",
+      "cosine_distance": 0.0745
+    },
+    {
+      "a": "graph/body-graph-connection--abductor_digiti_minimi--sources.md",
+      "b": "graph/body-graph-connection--flexor_digiti_minimi_brevis_foot--sources.md",
+      "cosine_distance": 0.0761
+    },
+    {
+      "a": "graph/body-graph-connection--obturator_externus--sources.md",
+      "b": "graph/body-graph-connection--obturator_externus--anatomy.md",
+      "cosine_distance": 0.0764
+    },
+    {
+      "a": "graph/body-graph-connection--deep_neck_flexors--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--deep_neck_flexors--anatomy.md",
+      "cosine_distance": 0.0788
+    },
+    {
+      "a": "graph/body-graph-connection--superior_gemellus--sources.md",
+      "b": "graph/body-graph-connection--superior_gemellus--anatomy.md",
+      "cosine_distance": 0.079
+    },
+    {
+      "a": "graph/body-graph-connection--plantar_interossei--anatomy.md",
+      "b": "graph/body-graph-connection--plantar_interossei--key-clinical-connections.md",
+      "cosine_distance": 0.0792
+    },
+    {
+      "a": "graph/body-graph-connection--stylohyoid--sources.md",
+      "b": "graph/body-graph-connection--stylohyoid--key-clinical-connections.md",
+      "cosine_distance": 0.0793
+    },
+    {
+      "a": "graph/body-graph-connection--rectus_capitis_lateralis--anatomy.md",
+      "b": "graph/body-graph-connection--rectus_capitis_lateralis--functional-relationships.md",
+      "cosine_distance": 0.0805
+    },
+    {
+      "a": "graph/body-graph-connection--platysma--anatomy.md",
+      "b": "graph/body-graph-connection--platysma--sources.md",
+      "cosine_distance": 0.0819
+    },
+    {
+      "a": "graph/body-graph-connection--pronator_quadratus--sources.md",
+      "b": "graph/body-graph-connection--pronator_quadratus--sources-2.md",
+      "cosine_distance": 0.0828
+    },
+    {
+      "a": "graph/body-graph-chain--SFAL.md",
+      "b": "graph/body-graph-chain--SBAL.md",
+      "cosine_distance": 0.0829
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_antebrachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--posterior_brachial_cutaneous.md",
+      "cosine_distance": 0.0836
+    },
+    {
+      "a": "graph/body-graph-structure--distal_phalanx_hand.md",
+      "b": "graph/body-graph-structure--middle_phalanx_hand.md",
+      "cosine_distance": 0.0838
+    },
+    {
+      "a": "graph/body-graph-connection--pronator_teres--sources.md",
+      "b": "graph/body-graph-connection--pronator_teres--key-clinical-connections.md",
+      "cosine_distance": 0.084
+    },
+    {
+      "a": "graph/body-graph-connection--flexor_digiti_minimi_brevis_foot--functional-relationships.md",
+      "b": "graph/body-graph-connection--abductor_digiti_minimi--functional-relationships.md",
+      "cosine_distance": 0.0842
+    },
+    {
+      "a": "graph/body-graph-nerve--dorsal_digital_radial.md",
+      "b": "graph/body-graph-nerve--proper_palmar_digital_median.md",
+      "cosine_distance": 0.0843
+    },
+    {
+      "a": "graph/body-graph-chain--SFL.md",
+      "b": "graph/body-graph-chain--FFL.md",
+      "cosine_distance": 0.0856
+    },
+    {
+      "a": "graph/body-graph-connection--adductor_hallucis--sources.md",
+      "b": "graph/body-graph-connection--adductor_hallucis--anatomy.md",
+      "cosine_distance": 0.0858
+    },
+    {
+      "a": "graph/body-graph-connection--anconeus--sources.md",
+      "b": "graph/body-graph-connection--anconeus--anatomy.md",
+      "cosine_distance": 0.0864
+    },
+    {
+      "a": "graph/body-graph-connection--splenius_cervicis--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--splenius_cervicis--anatomy.md",
+      "cosine_distance": 0.0868
+    },
+    {
+      "a": "graph/body-graph-connection--flexor_hallucis_longus--functional-relationships.md",
+      "b": "graph/body-graph-connection--flexor_hallucis_longus--sources.md",
+      "cosine_distance": 0.0872
+    },
+    {
+      "a": "graph/body-graph-structure--middle_phalanx_hand.md",
+      "b": "graph/body-graph-structure--proximal_phalanx_hand.md",
+      "cosine_distance": 0.0875
+    },
+    {
+      "a": "graph/body-graph-connection--pronator_quadratus--sources-2.md",
+      "b": "graph/body-graph-connection--pronator_quadratus--key-clinical-connections.md",
+      "cosine_distance": 0.0876
+    },
+    {
+      "a": "graph/body-graph-connection--peroneus_tertius--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--peroneus_tertius--sources.md",
+      "cosine_distance": 0.0877
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_brachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--lateral_antebrachial_cutaneous.md",
+      "cosine_distance": 0.0879
+    },
+    {
+      "a": "graph/body-graph-connection--obturator_externus--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--obturator_externus--anatomy.md",
+      "cosine_distance": 0.0879
+    },
+    {
+      "a": "graph/body-graph-connection--innermost_intercostals--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--innermost_intercostals--anatomy.md",
+      "cosine_distance": 0.088
+    },
+    {
+      "a": "graph/body-graph-structure--distal_phalanx_hand.md",
+      "b": "graph/body-graph-structure--proximal_phalanx_hand.md",
+      "cosine_distance": 0.0883
+    },
+    {
+      "a": "graph/body-graph-connection--pronator_teres--sources.md",
+      "b": "graph/body-graph-connection--pronator_teres--anatomy.md",
+      "cosine_distance": 0.0899
+    },
+    {
+      "a": "graph/body-graph-nerve--dorsal_digital_radial.md",
+      "b": "graph/body-graph-nerve--common_palmar_digital_median.md",
+      "cosine_distance": 0.0902
+    },
+    {
+      "a": "graph/body-graph-nerve--posterior_brachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--posterior_femoral_cutaneous.md",
+      "cosine_distance": 0.0907
+    },
+    {
+      "a": "graph/body-graph-connection--obturator_internus--anatomy.md",
+      "b": "graph/body-graph-connection--obturator_internus--sources.md",
+      "cosine_distance": 0.0908
+    },
+    {
+      "a": "graph/body-graph-chain--DFAL.md",
+      "b": "graph/body-graph-chain--DFL.md",
+      "cosine_distance": 0.0909
+    },
+    {
+      "a": "graph/body-graph-connection--adductor_hallucis--sources.md",
+      "b": "graph/body-graph-connection--adductor_hallucis--key-clinical-connections.md",
+      "cosine_distance": 0.0915
+    },
+    {
+      "a": "graph/body-graph-chain--Spiral.md",
+      "b": "graph/body-graph-chain--LL.md",
+      "cosine_distance": 0.0916
+    },
+    {
+      "a": "graph/body-graph-nerve--lateral_femoral_cutaneous.md",
+      "b": "graph/body-graph-nerve--lateral_sural_cutaneous.md",
+      "cosine_distance": 0.0921
+    },
+    {
+      "a": "graph/body-graph-nerve--lateral_femoral_cutaneous.md",
+      "b": "graph/body-graph-nerve--lateral_antebrachial_cutaneous.md",
+      "cosine_distance": 0.0925
+    },
+    {
+      "a": "graph/body-graph-connection--quadratus_plantae--anatomy.md",
+      "b": "graph/body-graph-connection--quadratus_plantae--sources.md",
+      "cosine_distance": 0.0956
+    },
+    {
+      "a": "graph/body-graph-structure--proximal_phalanx_foot.md",
+      "b": "graph/body-graph-structure--proximal_phalanx_hand.md",
+      "cosine_distance": 0.0957
+    },
+    {
+      "a": "graph/body-graph-chain--SBL.md",
+      "b": "graph/body-graph-chain--SFL.md",
+      "cosine_distance": 0.0959
+    },
+    {
+      "a": "graph/body-graph-connection--abductor_digiti_minimi--sources.md",
+      "b": "graph/body-graph-connection--flexor_digiti_minimi_brevis_foot--key-clinical-connections.md",
+      "cosine_distance": 0.0964
+    },
+    {
+      "a": "anatomy/01-myofascial-chains--05-the-12-myofascial-meridians.md",
+      "b": "anatomy/01-myofascial-chains--03-the-12-myofascial-meridians.md",
+      "cosine_distance": 0.0973
+    },
+    {
+      "a": "graph/body-graph-connection--subscapularis--sources.md",
+      "b": "graph/body-graph-connection--subscapularis--key-clinical-connections.md",
+      "cosine_distance": 0.0975
+    },
+    {
+      "a": "graph/body-graph-chain--SFAL.md",
+      "b": "graph/body-graph-chain--SFL.md",
+      "cosine_distance": 0.0977
+    },
+    {
+      "a": "graph/body-graph-connection--extensor_indicis--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--extensor_indicis--anatomy.md",
+      "cosine_distance": 0.098
+    },
+    {
+      "a": "graph/body-graph-nerve--palmar_branch_ulnar.md",
+      "b": "graph/body-graph-nerve--common_palmar_digital_median.md",
+      "cosine_distance": 0.0983
+    },
+    {
+      "a": "graph/body-graph-connection--pronator_quadratus--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--pronator_quadratus--anatomy.md",
+      "cosine_distance": 0.0984
+    },
+    {
+      "a": "graph/body-graph-connection--serratus_posterior_superior--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--serratus_posterior_superior--anatomy.md",
+      "cosine_distance": 0.0987
+    },
+    {
+      "a": "graph/body-graph-connection--sternothyroid--sources.md",
+      "b": "graph/body-graph-connection--sternothyroid--key-clinical-connections.md",
+      "cosine_distance": 0.0989
+    },
+    {
+      "a": "graph/body-graph-connection--deltoid-posterior.md",
+      "b": "graph/body-graph-connection--deltoid-anterior.md",
+      "cosine_distance": 0.0993
+    },
+    {
+      "a": "graph/body-graph-connection--rectus_capitis_lateralis--sources.md",
+      "b": "graph/body-graph-connection--rectus_capitis_lateralis--functional-relationships.md",
+      "cosine_distance": 0.0993
+    },
+    {
+      "a": "graph/body-graph-connection--splenius_cervicis--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--splenius_cervicis--sources.md",
+      "cosine_distance": 0.0996
+    },
+    {
+      "a": "graph/body-graph-connection--rectus_capitis_anterior--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--rectus_capitis_lateralis--functional-relationships.md",
+      "cosine_distance": 0.0999
+    },
+    {
+      "a": "graph/body-graph-connection--plantaris--anatomy.md",
+      "b": "graph/body-graph-connection--plantaris--sources.md",
+      "cosine_distance": 0.1004
+    },
+    {
+      "a": "anatomy/01-myofascial-chains--03-the-12-myofascial-meridians.md",
+      "b": "anatomy/01-myofascial-chains--04-the-12-myofascial-meridians.md",
+      "cosine_distance": 0.1007
+    },
+    {
+      "a": "graph/body-graph-connection--gluteus_minimus--sources.md",
+      "b": "graph/body-graph-connection--gluteus_minimus--anatomy.md",
+      "cosine_distance": 0.1011
+    },
+    {
+      "a": "graph/body-graph-nerve--superficial_branch_radial.md",
+      "b": "graph/body-graph-nerve--deep_branch_radial.md",
+      "cosine_distance": 0.1011
+    },
+    {
+      "a": "graph/body-graph-chain--SFL.md",
+      "b": "graph/body-graph-chain--DFL.md",
+      "cosine_distance": 0.1015
+    },
+    {
+      "a": "graph/body-graph-nerve--palmar_branch_ulnar.md",
+      "b": "graph/body-graph-nerve--proper_palmar_digital_median.md",
+      "cosine_distance": 0.1021
+    },
+    {
+      "a": "graph/body-graph-entrapment--fibular_head.md",
+      "b": "graph/body-graph-entrapment--fibular_head--sources-1.md",
+      "cosine_distance": 0.1028
+    },
+    {
+      "a": "graph/body-graph-connection--platysma--anatomy.md",
+      "b": "graph/body-graph-connection--platysma--key-clinical-connections.md",
+      "cosine_distance": 0.1033
+    },
+    {
+      "a": "graph/body-graph-chain--SFAL.md",
+      "b": "graph/body-graph-chain--DBAL.md",
+      "cosine_distance": 0.1038
+    },
+    {
+      "a": "graph/body-graph-nerve--musculocutaneous.md",
+      "b": "graph/body-graph-nerve--lateral_antebrachial_cutaneous.md",
+      "cosine_distance": 0.105
+    },
+    {
+      "a": "graph/body-graph-connection--multifidus--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--multifidus--anatomy.md",
+      "cosine_distance": 0.105
+    },
+    {
+      "a": "graph/body-graph-chain--SBL.md",
+      "b": "graph/body-graph-chain--Spiral.md",
+      "cosine_distance": 0.1051
+    },
+    {
+      "a": "graph/body-graph-chain--SBL.md",
+      "b": "graph/body-graph-chain--SBAL.md",
+      "cosine_distance": 0.1052
+    },
+    {
+      "a": "graph/body-graph-nerve--superficial_branch_radial.md",
+      "b": "graph/body-graph-nerve--posterior_brachial_cutaneous.md",
+      "cosine_distance": 0.1054
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_sural.md",
+      "b": "graph/body-graph-nerve--intermediate_dorsal_cutaneous.md",
+      "cosine_distance": 0.1055
+    },
+    {
+      "a": "graph/body-graph-chain--SBL.md",
+      "b": "graph/body-graph-chain--BFL.md",
+      "cosine_distance": 0.1056
+    },
+    {
+      "a": "graph/body-graph-chain--SBL.md",
+      "b": "graph/body-graph-chain--DFL.md",
+      "cosine_distance": 0.1062
+    },
+    {
+      "a": "graph/body-graph-connection--splenius_capitis--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--splenius_capitis--sources.md",
+      "cosine_distance": 0.1064
+    },
+    {
+      "a": "graph/body-graph-nerve--dorsal_digital_radial.md",
+      "b": "graph/body-graph-nerve--deep_branch_radial.md",
+      "cosine_distance": 0.1065
+    },
+    {
+      "a": "graph/body-graph-connection--flexor_digiti_minimi_brevis_foot--sources.md",
+      "b": "graph/body-graph-connection--flexor_digiti_minimi_brevis_foot--anatomy.md",
+      "cosine_distance": 0.1074
+    },
+    {
+      "a": "graph/body-graph-nerve--lateral_sural_cutaneous.md",
+      "b": "graph/body-graph-nerve--posterior_femoral_cutaneous.md",
+      "cosine_distance": 0.1074
+    },
+    {
+      "a": "graph/body-graph-nerve--intermediate_dorsal_cutaneous.md",
+      "b": "graph/body-graph-nerve--posterior_femoral_cutaneous.md",
+      "cosine_distance": 0.1082
+    },
+    {
+      "a": "graph/body-graph-connection--flexor_digiti_minimi_brevis_foot--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--flexor_digiti_minimi_brevis_foot--anatomy.md",
+      "cosine_distance": 0.1085
+    },
+    {
+      "a": "graph/body-graph-connection--external_oblique.md",
+      "b": "graph/body-graph-connection--internal_oblique--anatomy.md",
+      "cosine_distance": 0.1098
+    },
+    {
+      "a": "graph/body-graph-connection--dorsal_interossei_foot--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--plantar_interossei--key-clinical-connections.md",
+      "cosine_distance": 0.1099
+    },
+    {
+      "a": "exercise-science/01-emg-and-muscle-activation--06-what-s-contested.md",
+      "b": "exercise-science/01-emg-and-muscle-activation--07-what-doesn-t-hold-up.md",
+      "cosine_distance": 0.1103
+    },
+    {
+      "a": "graph/body-graph-entrapment--deep_gluteal.md",
+      "b": "graph/body-graph-connection--piriformis.md",
+      "cosine_distance": 0.1104
+    },
+    {
+      "a": "graph/body-graph-connection--pronator_quadratus--sources-2.md",
+      "b": "graph/body-graph-connection--pronator_quadratus--anatomy.md",
+      "cosine_distance": 0.1107
+    },
+    {
+      "a": "graph/body-graph-connection--dorsal_interossei_foot--anatomy.md",
+      "b": "graph/body-graph-connection--plantar_interossei--sources.md",
+      "cosine_distance": 0.1119
+    },
+    {
+      "a": "graph/body-graph-chain--SBL.md",
+      "b": "graph/body-graph-chain--LL.md",
+      "cosine_distance": 0.1124
+    },
+    {
+      "a": "graph/body-graph-connection--extensor_hallucis_brevis.md",
+      "b": "graph/body-graph-connection--extensor_digitorum_brevis.md",
+      "cosine_distance": 0.1125
+    },
+    {
+      "a": "graph/body-graph-nerve--posterior_femoral_cutaneous.md",
+      "b": "graph/body-graph-nerve--lateral_antebrachial_cutaneous.md",
+      "cosine_distance": 0.113
+    },
+    {
+      "a": "graph/body-graph-chain--DFAL.md",
+      "b": "graph/body-graph-chain--SBAL.md",
+      "cosine_distance": 0.1133
+    },
+    {
+      "a": "graph/body-graph-connection--plantaris--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--plantaris--anatomy.md",
+      "cosine_distance": 0.1139
+    },
+    {
+      "a": "graph/body-graph-connection--internal_oblique--sources.md",
+      "b": "graph/body-graph-connection--internal_oblique--key-clinical-connections.md",
+      "cosine_distance": 0.114
+    },
+    {
+      "a": "graph/body-graph-chain--DFL.md",
+      "b": "graph/body-graph-chain--FFL.md",
+      "cosine_distance": 0.114
+    },
+    {
+      "a": "graph/body-graph-connection--serratus_posterior_superior--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--serratus_posterior_superior--sources.md",
+      "cosine_distance": 0.1143
+    },
+    {
+      "a": "graph/body-graph-connection--pronator_quadratus--sources.md",
+      "b": "graph/body-graph-connection--pronator_quadratus--anatomy.md",
+      "cosine_distance": 0.1146
+    },
+    {
+      "a": "graph/body-graph-nerve--lateral_femoral_cutaneous.md",
+      "b": "graph/body-graph-nerve--intermediate_dorsal_cutaneous.md",
+      "cosine_distance": 0.1149
+    },
+    {
+      "a": "graph/body-graph-connection--quadratus_plantae--anatomy.md",
+      "b": "graph/body-graph-connection--quadratus_plantae--key-clinical-connections.md",
+      "cosine_distance": 0.115
+    },
+    {
+      "a": "graph/body-graph-nerve--palmar_branch_ulnar.md",
+      "b": "graph/body-graph-nerve--posterior_brachial_cutaneous.md",
+      "cosine_distance": 0.115
+    },
+    {
+      "a": "graph/body-graph-connection--semispinalis_capitis--anatomy.md",
+      "b": "graph/body-graph-connection--semispinalis_capitis--sources.md",
+      "cosine_distance": 0.1151
+    },
+    {
+      "a": "anatomy/04-neuromuscular-reeducation--06-practical-re-education-techniques.md",
+      "b": "anatomy/04-neuromuscular-reeducation--05-practical-re-education-techniques.md",
+      "cosine_distance": 0.1152
+    },
+    {
+      "a": "graph/body-graph-nerve--palmar_branch_ulnar.md",
+      "b": "graph/body-graph-nerve--lateral_antebrachial_cutaneous.md",
+      "cosine_distance": 0.1153
+    },
+    {
+      "a": "graph/body-graph-connection--subscapularis--anatomy.md",
+      "b": "graph/body-graph-connection--subscapularis--key-clinical-connections.md",
+      "cosine_distance": 0.1158
+    },
+    {
+      "a": "graph/body-graph-nerve--iliohypogastric.md",
+      "b": "graph/body-graph-nerve--ilioinguinal.md",
+      "cosine_distance": 0.1158
+    },
+    {
+      "a": "exercise-science/01-emg-and-muscle-activation--07-what-doesn-t-hold-up.md",
+      "b": "exercise-science/01-emg-and-muscle-activation--05-what-we-know-for-sure.md",
+      "cosine_distance": 0.1159
+    },
+    {
+      "a": "graph/body-graph-nerve--superficial_branch_radial.md",
+      "b": "graph/body-graph-nerve--proper_palmar_digital_median.md",
+      "cosine_distance": 0.1161
+    },
+    {
+      "a": "anatomy/evidence-honesty--07-what-this-means-for-anything-reading-these-docs.md",
+      "b": "anatomy/evidence-honesty--01-overview.md",
+      "cosine_distance": 0.1164
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_antebrachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--palmar_branch_ulnar.md",
+      "cosine_distance": 0.1168
+    },
+    {
+      "a": "graph/body-graph-connection--rectus_capitis_lateralis--sources.md",
+      "b": "graph/body-graph-connection--rectus_capitis_anterior--sources.md",
+      "cosine_distance": 0.1169
+    },
+    {
+      "a": "graph/body-graph-chain--BFL.md",
+      "b": "graph/body-graph-chain--FFL.md",
+      "cosine_distance": 0.1172
+    },
+    {
+      "a": "graph/body-graph-connection--rectus_capitis_anterior--sources.md",
+      "b": "graph/body-graph-connection--rectus_capitis_lateralis--functional-relationships.md",
+      "cosine_distance": 0.1176
+    },
+    {
+      "a": "graph/body-graph-connection--splenius_cervicis--anatomy.md",
+      "b": "graph/body-graph-connection--splenius_cervicis--sources.md",
+      "cosine_distance": 0.1177
+    },
+    {
+      "a": "graph/body-graph-connection--sternothyroid--sources.md",
+      "b": "graph/body-graph-connection--sternothyroid--anatomy.md",
+      "cosine_distance": 0.1178
+    },
+    {
+      "a": "graph/body-graph-connection--pronator_quadratus--sources.md",
+      "b": "graph/body-graph-connection--pronator_quadratus--key-clinical-connections.md",
+      "cosine_distance": 0.1178
+    },
+    {
+      "a": "anatomy/01-myofascial-chains--05-the-12-myofascial-meridians.md",
+      "b": "anatomy/01-myofascial-chains--04-the-12-myofascial-meridians.md",
+      "cosine_distance": 0.1178
+    },
+    {
+      "a": "exercise-science/03-primary-muscle-attribution-policy--03-our-choice-convention-b.md",
+      "b": "exercise-science/03-primary-muscle-attribution-policy--02-the-two-conventions.md",
+      "cosine_distance": 0.1179
+    },
+    {
+      "a": "graph/body-graph-nerve--lateral_femoral_cutaneous.md",
+      "b": "graph/body-graph-nerve--posterior_brachial_cutaneous.md",
+      "cosine_distance": 0.118
+    },
+    {
+      "a": "graph/body-graph-entrapment--fibular_head.md",
+      "b": "graph/body-graph-entrapment--fibular_head--sources-2.md",
+      "cosine_distance": 0.1187
+    },
+    {
+      "a": "graph/body-graph-connection--quadratus_plantae--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--quadratus_plantae--sources.md",
+      "cosine_distance": 0.1188
+    },
+    {
+      "a": "graph/body-graph-connection--plantar_interossei--anatomy.md",
+      "b": "graph/body-graph-connection--dorsal_interossei_foot--key-clinical-connections.md",
+      "cosine_distance": 0.1189
+    },
+    {
+      "a": "graph/body-graph-nerve--superficial_branch_radial.md",
+      "b": "graph/body-graph-nerve--common_palmar_digital_median.md",
+      "cosine_distance": 0.1192
+    },
+    {
+      "a": "graph/body-graph-connection--dorsal_interossei_foot--anatomy.md",
+      "b": "graph/body-graph-connection--plantar_interossei--key-clinical-connections.md",
+      "cosine_distance": 0.1198
+    },
+    {
+      "a": "graph/body-graph-nerve--lateral_sural_cutaneous.md",
+      "b": "graph/body-graph-nerve--lateral_antebrachial_cutaneous.md",
+      "cosine_distance": 0.1198
+    },
+    {
+      "a": "graph/body-graph-connection--serratus_posterior_inferior--sources.md",
+      "b": "graph/body-graph-connection--serratus_posterior_inferior--anatomy.md",
+      "cosine_distance": 0.1202
+    },
+    {
+      "a": "graph/body-graph-connection--iliacus--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--iliacus--anatomy.md",
+      "cosine_distance": 0.1203
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_sural.md",
+      "b": "graph/body-graph-nerve--posterior_femoral_cutaneous.md",
+      "cosine_distance": 0.1211
+    },
+    {
+      "a": "graph/body-graph-nerve--intermediate_dorsal_cutaneous.md",
+      "b": "graph/body-graph-nerve--posterior_brachial_cutaneous.md",
+      "cosine_distance": 0.1212
+    },
+    {
+      "a": "graph/body-graph-chain--DBAL.md",
+      "b": "graph/body-graph-chain--DFL.md",
+      "cosine_distance": 0.1219
+    },
+    {
+      "a": "graph/body-graph-chain--SBL.md",
+      "b": "graph/body-graph-chain--SFAL.md",
+      "cosine_distance": 0.122
+    },
+    {
+      "a": "graph/body-graph-connection--iliacus--sources.md",
+      "b": "graph/body-graph-connection--iliacus--anatomy.md",
+      "cosine_distance": 0.1221
+    },
+    {
+      "a": "graph/body-graph-connection--superior_gemellus--sources.md",
+      "b": "graph/body-graph-connection--inferior_gemellus.md",
+      "cosine_distance": 0.1221
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_antebrachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--intermediate_dorsal_cutaneous.md",
+      "cosine_distance": 0.1233
+    },
+    {
+      "a": "graph/body-graph-chain--SBL.md",
+      "b": "graph/body-graph-chain--DBAL.md",
+      "cosine_distance": 0.1235
+    },
+    {
+      "a": "graph/body-graph-nerve--lateral_femoral_cutaneous.md",
+      "b": "graph/body-graph-nerve--medial_sural.md",
+      "cosine_distance": 0.1237
+    },
+    {
+      "a": "graph/body-graph-connection--rectus_capitis_anterior--sources.md",
+      "b": "graph/body-graph-connection--rectus_capitis_lateralis--anatomy.md",
+      "cosine_distance": 0.1237
+    },
+    {
+      "a": "graph/body-graph-nerve--lateral_sural_cutaneous.md",
+      "b": "graph/body-graph-nerve--intermediate_dorsal_cutaneous.md",
+      "cosine_distance": 0.125
+    },
+    {
+      "a": "anatomy/09-diaphragm-breathing-and-exercise--08-diaphragm-training-what-works-verified.md",
+      "b": "anatomy/09-diaphragm-breathing-and-exercise--09-honest-assessment.md",
+      "cosine_distance": 0.1251
+    },
+    {
+      "a": "graph/body-graph-structure--cervical_vertebra.md",
+      "b": "graph/body-graph-structure--thoracic_vertebra.md",
+      "cosine_distance": 0.1252
+    },
+    {
+      "a": "graph/body-graph-nerve--superficial_branch_radial.md",
+      "b": "graph/body-graph-nerve--sural_communicating.md",
+      "cosine_distance": 0.1253
+    },
+    {
+      "a": "graph/body-graph-nerve--superficial_branch_radial.md",
+      "b": "graph/body-graph-nerve--palmar_branch_ulnar.md",
+      "cosine_distance": 0.1254
+    },
+    {
+      "a": "graph/body-graph-structure--clavicle.md",
+      "b": "graph/body-graph-structure--scapula.md",
+      "cosine_distance": 0.1257
+    },
+    {
+      "a": "graph/body-graph-connection--serratus_posterior_superior--anatomy.md",
+      "b": "graph/body-graph-connection--serratus_posterior_superior--sources.md",
+      "cosine_distance": 0.126
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_brachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--intermediate_dorsal_cutaneous.md",
+      "cosine_distance": 0.127
+    },
+    {
+      "a": "graph/body-graph-structure--lumbar_vertebra.md",
+      "b": "graph/body-graph-structure--cervical_vertebra.md",
+      "cosine_distance": 0.127
+    },
+    {
+      "a": "graph/body-graph-nerve--saphenous.md",
+      "b": "graph/body-graph-nerve--posterior_femoral_cutaneous.md",
+      "cosine_distance": 0.1273
+    },
+    {
+      "a": "graph/body-graph-chain--BFL.md",
+      "b": "graph/body-graph-chain--DFL.md",
+      "cosine_distance": 0.1275
+    },
+    {
+      "a": "anatomy/07-fascia-science-current-state--03-what-we-know-for-sure.md",
+      "b": "anatomy/07-fascia-science-current-state--06-what-we-don-t-know-to.md",
+      "cosine_distance": 0.1278
+    },
+    {
+      "a": "graph/body-graph-connection--innermost_intercostals--sources.md",
+      "b": "graph/body-graph-connection--intercostals.md",
+      "cosine_distance": 0.1279
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_brachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--palmar_branch_ulnar.md",
+      "cosine_distance": 0.128
+    },
+    {
+      "a": "graph/body-graph-connection--flexor_hallucis_brevis--sources.md",
+      "b": "graph/body-graph-connection--flexor_hallucis_brevis--anatomy.md",
+      "cosine_distance": 0.1283
+    },
+    {
+      "a": "graph/body-graph-structure--superior_glenohumeral_ligament.md",
+      "b": "graph/body-graph-structure--middle_glenohumeral_ligament.md",
+      "cosine_distance": 0.1283
+    },
+    {
+      "a": "graph/body-graph-connection--gluteus_minimus--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--gluteus_minimus--anatomy.md",
+      "cosine_distance": 0.1287
+    },
+    {
+      "a": "exercise-science/01-emg-and-muscle-activation--04-a-short-history.md",
+      "b": "exercise-science/01-emg-and-muscle-activation--11-sources.md",
+      "cosine_distance": 0.1289
+    },
+    {
+      "a": "graph/body-graph-connection--soleus.md",
+      "b": "graph/body-graph-connection--gastrocnemius.md",
+      "cosine_distance": 0.1289
+    },
+    {
+      "a": "graph/body-graph-connection--internal_oblique--sources.md",
+      "b": "graph/body-graph-connection--internal_oblique--anatomy.md",
+      "cosine_distance": 0.1291
+    },
+    {
+      "a": "graph/body-graph-structure--styloglossus.md",
+      "b": "graph/body-graph-structure--hyoglossus.md",
+      "cosine_distance": 0.1292
+    },
+    {
+      "a": "anatomy/15-medical-red-flags--01-overview.md",
+      "b": "anatomy/15-medical-red-flags--04-the-flags-in-plain-language-and-in-depth.md",
+      "cosine_distance": 0.1293
+    },
+    {
+      "a": "graph/body-graph-nerve--musculocutaneous.md",
+      "b": "graph/body-graph-nerve--posterior_brachial_cutaneous.md",
+      "cosine_distance": 0.1299
+    },
+    {
+      "a": "graph/body-graph-connection--peroneus_tertius--sources-2.md",
+      "b": "graph/body-graph-connection--peroneus_tertius--anatomy.md",
+      "cosine_distance": 0.1302
+    },
+    {
+      "a": "graph/body-graph-nerve--lateral_femoral_cutaneous.md",
+      "b": "graph/body-graph-nerve--medial_antebrachial_cutaneous.md",
+      "cosine_distance": 0.1303
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_antebrachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--posterior_femoral_cutaneous.md",
+      "cosine_distance": 0.1303
+    },
+    {
+      "a": "graph/body-graph-structure--capitate.md",
+      "b": "graph/body-graph-structure--hamate.md",
+      "cosine_distance": 0.1306
+    },
+    {
+      "a": "graph/body-graph-nerve--lateral_sural_cutaneous.md",
+      "b": "graph/body-graph-nerve--posterior_brachial_cutaneous.md",
+      "cosine_distance": 0.1318
+    },
+    {
+      "a": "graph/body-graph-connection--semispinalis_capitis--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--semispinalis_capitis--sources.md",
+      "cosine_distance": 0.1325
+    },
+    {
+      "a": "graph/body-graph-connection--splenius_capitis--sources.md",
+      "b": "graph/body-graph-connection--splenius_cervicis--sources.md",
+      "cosine_distance": 0.1327
+    },
+    {
+      "a": "graph/body-graph-nerve--intermediate_dorsal_cutaneous.md",
+      "b": "graph/body-graph-nerve--lateral_antebrachial_cutaneous.md",
+      "cosine_distance": 0.1328
+    },
+    {
+      "a": "graph/body-graph-connection--splenius_capitis--sources.md",
+      "b": "graph/body-graph-connection--splenius_capitis--anatomy.md",
+      "cosine_distance": 0.1329
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_brachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--superficial_branch_radial.md",
+      "cosine_distance": 0.133
+    },
+    {
+      "a": "graph/body-graph-connection--semispinalis_capitis--anatomy.md",
+      "b": "graph/body-graph-connection--semispinalis_capitis--key-clinical-connections.md",
+      "cosine_distance": 0.1331
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_brachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--medial_sural.md",
+      "cosine_distance": 0.1336
+    },
+    {
+      "a": "graph/body-graph-structure--capitate.md",
+      "b": "graph/body-graph-structure--trapezium.md",
+      "cosine_distance": 0.1336
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_antebrachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--medial_sural.md",
+      "cosine_distance": 0.1343
+    },
+    {
+      "a": "graph/body-graph-structure--tibia.md",
+      "b": "graph/body-graph-structure--fibula.md",
+      "cosine_distance": 0.1346
+    },
+    {
+      "a": "graph/body-graph-connection--deltoid-lateral.md",
+      "b": "graph/body-graph-connection--deltoid-posterior.md",
+      "cosine_distance": 0.1346
+    },
+    {
+      "a": "graph/body-graph-nerve--intermediate_dorsal_cutaneous.md",
+      "b": "graph/body-graph-nerve--sural_communicating.md",
+      "cosine_distance": 0.1347
+    },
+    {
+      "a": "graph/body-graph-connection--splenius_capitis--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--splenius_capitis--anatomy.md",
+      "cosine_distance": 0.1347
+    },
+    {
+      "a": "graph/body-graph-chain--DBAL.md",
+      "b": "graph/body-graph-chain--BFL.md",
+      "cosine_distance": 0.1349
+    },
+    {
+      "a": "graph/body-graph-chain--SBL.md",
+      "b": "graph/body-graph-chain--DFAL.md",
+      "cosine_distance": 0.135
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_brachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--common_palmar_digital_median.md",
+      "cosine_distance": 0.1351
+    },
+    {
+      "a": "graph/body-graph-connection--triceps-medial_head.md",
+      "b": "graph/body-graph-connection--triceps-long_head.md",
+      "cosine_distance": 0.1353
+    },
+    {
+      "a": "graph/body-graph-nerve--superficial_branch_radial.md",
+      "b": "graph/body-graph-nerve--lateral_antebrachial_cutaneous.md",
+      "cosine_distance": 0.1354
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_brachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--lateral_femoral_cutaneous.md",
+      "cosine_distance": 0.1355
+    },
+    {
+      "a": "anatomy/05-muscle-anatomy-database--03-upper-body.md",
+      "b": "anatomy/05-muscle-anatomy-database--02-upper-body.md",
+      "cosine_distance": 0.1355
+    },
+    {
+      "a": "graph/body-graph-nerve--saphenous.md",
+      "b": "graph/body-graph-nerve--lateral_femoral_cutaneous.md",
+      "cosine_distance": 0.1355
+    },
+    {
+      "a": "graph/body-graph-nerve--genitofemoral.md",
+      "b": "graph/body-graph-nerve--posterior_femoral_cutaneous.md",
+      "cosine_distance": 0.1359
+    },
+    {
+      "a": "graph/body-graph-chain--LL.md",
+      "b": "graph/body-graph-chain--BFL.md",
+      "cosine_distance": 0.136
+    },
+    {
+      "a": "graph/body-graph-nerve--dorsal_digital_radial.md",
+      "b": "graph/body-graph-nerve--posterior_brachial_cutaneous.md",
+      "cosine_distance": 0.1363
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_brachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--musculocutaneous.md",
+      "cosine_distance": 0.1363
+    },
+    {
+      "a": "anatomy/09-diaphragm-breathing-and-exercise--08-diaphragm-training-what-works-verified.md",
+      "b": "anatomy/09-diaphragm-breathing-and-exercise--07-practical-implications.md",
+      "cosine_distance": 0.1366
+    },
+    {
+      "a": "graph/body-graph-connection--dorsal_interossei_foot--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--plantar_interossei--sources.md",
+      "cosine_distance": 0.1366
+    },
+    {
+      "a": "graph/body-graph-connection--obturator_internus--anatomy.md",
+      "b": "graph/body-graph-connection--obturator_internus--key-clinical-connections.md",
+      "cosine_distance": 0.1369
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_antebrachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--common_palmar_digital_median.md",
+      "cosine_distance": 0.1372
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_antebrachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--musculocutaneous.md",
+      "cosine_distance": 0.1372
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_brachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--proper_palmar_digital_median.md",
+      "cosine_distance": 0.1373
+    },
+    {
+      "a": "graph/body-graph-chain--DFAL.md",
+      "b": "graph/body-graph-chain--FFL.md",
+      "cosine_distance": 0.1374
+    },
+    {
+      "a": "graph/body-graph-connection--deltoid-lateral.md",
+      "b": "graph/body-graph-connection--deltoid-anterior.md",
+      "cosine_distance": 0.1376
+    },
+    {
+      "a": "graph/body-graph-connection--splenius_cervicis--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--splenius_capitis--sources.md",
+      "cosine_distance": 0.1377
+    },
+    {
+      "a": "graph/body-graph-connection--serratus_posterior_superior--anatomy.md",
+      "b": "graph/body-graph-connection--serratus_posterior_inferior--anatomy.md",
+      "cosine_distance": 0.1379
+    },
+    {
+      "a": "graph/body-graph-connection--multifidus--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--multifidus--sources.md",
+      "cosine_distance": 0.1381
+    },
+    {
+      "a": "graph/body-graph-chain--DFAL.md",
+      "b": "graph/body-graph-chain--SFL.md",
+      "cosine_distance": 0.1382
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_brachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--posterior_femoral_cutaneous.md",
+      "cosine_distance": 0.1384
+    },
+    {
+      "a": "graph/body-graph-nerve--dorsal_digital_radial.md",
+      "b": "graph/body-graph-nerve--sural_communicating.md",
+      "cosine_distance": 0.1387
+    },
+    {
+      "a": "anatomy/09-diaphragm-breathing-and-exercise--08-diaphragm-training-what-works-verified.md",
+      "b": "anatomy/09-diaphragm-breathing-and-exercise--04-the-pressure-cylinder-core-stability-system.md",
+      "cosine_distance": 0.1389
+    },
+    {
+      "a": "graph/body-graph-nerve--sural_communicating.md",
+      "b": "graph/body-graph-nerve--common_palmar_digital_median.md",
+      "cosine_distance": 0.1391
+    },
+    {
+      "a": "graph/body-graph-chain--Spiral.md",
+      "b": "graph/body-graph-chain--DFL.md",
+      "cosine_distance": 0.1394
+    },
+    {
+      "a": "graph/body-graph-chain--SBL.md",
+      "b": "graph/body-graph-chain--FFL.md",
+      "cosine_distance": 0.1395
+    },
+    {
+      "a": "anatomy/09-diaphragm-breathing-and-exercise--07-practical-implications.md",
+      "b": "anatomy/09-diaphragm-breathing-and-exercise--03-dual-function-breathing-and-posture.md",
+      "cosine_distance": 0.1396
+    },
+    {
+      "a": "graph/body-graph-entrapment--meralgia_paresthetica--sources.md",
+      "b": "graph/body-graph-entrapment--meralgia_paresthetica.md",
+      "cosine_distance": 0.1396
+    },
+    {
+      "a": "exercise-science/01-emg-and-muscle-activation--07-what-doesn-t-hold-up.md",
+      "b": "exercise-science/01-emg-and-muscle-activation--11-sources.md",
+      "cosine_distance": 0.1398
+    },
+    {
+      "a": "graph/body-graph-chain--SFAL.md",
+      "b": "graph/body-graph-chain--FFL.md",
+      "cosine_distance": 0.1398
+    },
+    {
+      "a": "graph/body-graph-connection--adductor_hallucis--key-clinical-connections.md",
+      "b": "graph/body-graph-connection--adductor_hallucis--anatomy.md",
+      "cosine_distance": 0.14
+    },
+    {
+      "a": "graph/body-graph-nerve--superficial_branch_radial.md",
+      "b": "graph/body-graph-nerve--medial_antebrachial_cutaneous.md",
+      "cosine_distance": 0.14
+    },
+    {
+      "a": "anatomy/09-diaphragm-breathing-and-exercise--07-practical-implications.md",
+      "b": "anatomy/09-diaphragm-breathing-and-exercise--09-honest-assessment.md",
+      "cosine_distance": 0.14
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_antebrachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--proper_palmar_digital_median.md",
+      "cosine_distance": 0.1401
+    },
+    {
+      "a": "graph/body-graph-nerve--lateral_femoral_cutaneous.md",
+      "b": "graph/body-graph-nerve--genitofemoral.md",
+      "cosine_distance": 0.1403
+    },
+    {
+      "a": "graph/body-graph-nerve--saphenous.md",
+      "b": "graph/body-graph-nerve--sural_communicating.md",
+      "cosine_distance": 0.1406
+    },
+    {
+      "a": "graph/body-graph-nerve--lateral_femoral_cutaneous.md",
+      "b": "graph/body-graph-nerve--palmar_branch_ulnar.md",
+      "cosine_distance": 0.1407
+    },
+    {
+      "a": "graph/body-graph-chain--Spiral.md",
+      "b": "graph/body-graph-chain--SFL.md",
+      "cosine_distance": 0.1408
+    },
+    {
+      "a": "graph/body-graph-connection--abductor_digiti_minimi--sources.md",
+      "b": "graph/body-graph-connection--abductor_digiti_minimi--key-clinical-connections.md",
+      "cosine_distance": 0.1411
+    },
+    {
+      "a": "graph/body-graph-structure--lumbar_vertebra.md",
+      "b": "graph/body-graph-structure--thoracic_vertebra.md",
+      "cosine_distance": 0.1422
+    },
+    {
+      "a": "graph/body-graph-connection--flexor_hallucis_brevis--anatomy.md",
+      "b": "graph/body-graph-connection--adductor_hallucis--anatomy.md",
+      "cosine_distance": 0.1425
+    },
+    {
+      "a": "graph/body-graph-nerve--dorsal_digital_radial.md",
+      "b": "graph/body-graph-nerve--palmar_branch_ulnar.md",
+      "cosine_distance": 0.1428
+    },
+    {
+      "a": "anatomy/09-diaphragm-breathing-and-exercise--08-diaphragm-training-what-works-verified.md",
+      "b": "anatomy/09-diaphragm-breathing-and-exercise--10-sources.md",
+      "cosine_distance": 0.143
+    },
+    {
+      "a": "graph/body-graph-connection--teres_major.md",
+      "b": "graph/body-graph-connection--teres_minor.md",
+      "cosine_distance": 0.143
+    },
+    {
+      "a": "graph/body-graph-structure--triquetrum.md",
+      "b": "graph/body-graph-structure--trapezium.md",
+      "cosine_distance": 0.1433
+    },
+    {
+      "a": "graph/body-graph-nerve--medial_sural.md",
+      "b": "graph/body-graph-nerve--posterior_brachial_cutaneous.md",
+      "cosine_distance": 0.1434
+    },
+    {
+      "a": "graph/body-graph-nerve--inferior_gluteal.md",
+      "b": "graph/body-graph-nerve--genitofemoral.md",
+      "cosine_distance": 0.1434
+    },
+    {
+      "a": "graph/body-graph-nerve--posterior_brachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--sural_communicating.md",
+      "cosine_distance": 0.1435
+    },
+    {
+      "a": "graph/body-graph-nerve--genitofemoral.md",
+      "b": "graph/body-graph-nerve--superior_gluteal.md",
+      "cosine_distance": 0.1435
+    },
+    {
+      "a": "graph/body-graph-nerve--saphenous.md",
+      "b": "graph/body-graph-nerve--genitofemoral.md",
+      "cosine_distance": 0.1435
+    },
+    {
+      "a": "graph/body-graph-structure--capitate.md",
+      "b": "graph/body-graph-structure--metacarpal.md",
+      "cosine_distance": 0.1438
+    },
+    {
+      "a": "graph/body-graph-connection--coracobrachialis--sources.md",
+      "b": "graph/body-graph-connection--coracobrachialis--anatomy.md",
+      "cosine_distance": 0.1442
+    },
+    {
+      "a": "graph/body-graph-nerve--posterior_femoral_cutaneous.md",
+      "b": "graph/body-graph-nerve--sural_communicating.md",
+      "cosine_distance": 0.1446
+    },
+    {
+      "a": "graph/body-graph-nerve--palmar_branch_ulnar.md",
+      "b": "graph/body-graph-nerve--posterior_femoral_cutaneous.md",
+      "cosine_distance": 0.1446
+    },
+    {
+      "a": "graph/body-graph-connection--anconeus--sources.md",
+      "b": "graph/body-graph-connection--anconeus--sources-2.md",
+      "cosine_distance": 0.1451
+    },
+    {
+      "a": "graph/body-graph-chain--SFAL.md",
+      "b": "graph/body-graph-chain--DFL.md",
+      "cosine_distance": 0.1455
+    },
+    {
+      "a": "graph/body-graph-connection--subscapularis--anatomy.md",
+      "b": "graph/body-graph-connection--subscapularis--sources.md",
+      "cosine_distance": 0.1461
+    },
+    {
+      "a": "graph/body-graph-connection--splenius_cervicis--anatomy.md",
+      "b": "graph/body-graph-connection--splenius_capitis--anatomy.md",
+      "cosine_distance": 0.1462
+    },
+    {
+      "a": "graph/body-graph-chain--LL.md",
+      "b": "graph/body-graph-chain--DFL.md",
+      "cosine_distance": 0.1464
+    },
+    {
+      "a": "graph/body-graph-connection--pronator_teres--anatomy.md",
+      "b": "graph/body-graph-connection--pronator_teres--key-clinical-connections.md",
+      "cosine_distance": 0.1466
+    },
+    {
+      "a": "graph/body-graph-nerve--palmar_branch_ulnar.md",
+      "b": "graph/body-graph-nerve--sural_communicating.md",
+      "cosine_distance": 0.1466
+    },
+    {
+      "a": "graph/body-graph-nerve--palmar_branch_ulnar.md",
+      "b": "graph/body-graph-nerve--intermediate_dorsal_cutaneous.md",
+      "cosine_distance": 0.1467
+    },
+    {
+      "a": "graph/body-graph-connection--pronator_quadratus--sources-2.md",
+      "b": "graph/body-graph-connection--pronator_quadratus--trigger-point-referral-where-pain-is-felt.md",
+      "cosine_distance": 0.147
+    },
+    {
+      "a": "anatomy/evidence-honesty--04-the-verification-labels.md",
+      "b": "anatomy/evidence-honesty--07-what-this-means-for-anything-reading-these-docs.md",
+      "cosine_distance": 0.1471
+    },
+    {
+      "a": "graph/body-graph-connection--trapezius-lower.md",
+      "b": "graph/body-graph-connection--trapezius-middle.md",
+      "cosine_distance": 0.1473
+    },
+    {
+      "a": "graph/body-graph-nerve--dorsal_digital_radial.md",
+      "b": "graph/body-graph-nerve--intermediate_dorsal_cutaneous.md",
+      "cosine_distance": 0.1473
+    },
+    {
+      "a": "graph/body-graph-connection--multifidus--sources-2.md",
+      "b": "graph/body-graph-connection--multifidus--anatomy.md",
+      "cosine_distance": 0.1474
+    },
+    {
+      "a": "graph/body-graph-nerve--posterior_brachial_cutaneous.md",
+      "b": "graph/body-graph-nerve--common_palmar_digital_median.md",
+      "cosine_distance": 0.1476
+    },
+    {
+      "a": "graph/body-graph-nerve--superficial_branch_radial.md",
+      "b": "graph/body-graph-nerve--saphenous.md",
+      "cosine_distance": 0.1481
+    },
+    {
+      "a": "anatomy/09-diaphragm-breathing-and-exercise--08-diaphragm-training-what-works-verified.md",
+      "b": "anatomy/09-diaphragm-breathing-and-exercise--03-dual-function-breathing-and-posture.md",
+      "cosine_distance": 0.1481
+    },
+    {
+      "a": "graph/body-graph-structure--superior_glenohumeral_ligament.md",
+      "b": "graph/body-graph-structure--inferior_glenohumeral_ligament.md",
+      "cosine_distance": 0.1481
+    },
+    {
+      "a": "graph/body-graph-structure--talus.md",
+      "b": "graph/body-graph-structure--tibia.md",
+      "cosine_distance": 0.1484
+    },
+    {
+      "a": "graph/body-graph-structure--clavicle.md",
+      "b": "graph/body-graph-structure--sternum.md",
+      "cosine_distance": 0.1486
+    },
+    {
+      "a": "graph/body-graph-structure--middle_glenohumeral_ligament.md",
+      "b": "graph/body-graph-structure--inferior_glenohumeral_ligament.md",
+      "cosine_distance": 0.1486
+    },
+    {
+      "a": "graph/body-graph-connection--lumbricals_foot--sources.md",
+      "b": "graph/body-graph-connection--lumbricals_foot--key-clinical-connections.md",
+      "cosine_distance": 0.1486
+    },
+    {
+      "a": "anatomy/09-diaphragm-breathing-and-exercise--05-aerobic-vs-anaerobic-exercise-the-breathing-dimension.md",
+      "b": "anatomy/09-diaphragm-breathing-and-exercise--09-honest-assessment.md",
+      "cosine_distance": 0.1487
+    },
+    {
+      "a": "graph/body-graph-nerve--suprascapular.md",
+      "b": "graph/body-graph-nerve--superior_gluteal.md",
+      "cosine_distance": 0.1487
+    },
+    {
+      "a": "graph/body-graph-structure--femur.md",
+      "b": "graph/body-graph-structure--tibia.md",
+      "cosine_distance": 0.1487
+    },
+    {
+      "a": "exercise-science/01-emg-and-muscle-activation--04-a-short-history.md",
+      "b": "exercise-science/01-emg-and-muscle-activation--06-what-s-contested.md",
+      "cosine_distance": 0.1487
+    },
+    {
+      "a": "exercise-science/01-emg-and-muscle-activation--06-what-s-contested.md",
+      "b": "exercise-science/01-emg-and-muscle-activation--08-implications-for-our-app.md",
+      "cosine_distance": 0.1489
+    },
+    {
+      "a": "graph/body-graph-nerve--intermediate_dorsal_cutaneous.md",
+      "b": "graph/body-graph-nerve--common_palmar_digital_median.md",
+      "cosine_distance": 0.1491
+    },
+    {
+      "a": "graph/body-graph-structure--metacarpal.md",
+      "b": "graph/body-graph-structure--trapezium.md",
+      "cosine_distance": 0.1491
+    },
+    {
+      "a": "graph/body-graph-nerve--suprascapular.md",
+      "b": "graph/body-graph-nerve--tibial.md",
+      "cosine_distance": 0.1492
+    }
+  ]
+}

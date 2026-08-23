@@ -180,6 +180,15 @@ Execution order, and what each step is actually blocked on:
 > contract, Population B denominator) and coverage priority are resolved in the
 > platform repo, not here. The sources-chunks handling decision stays open.
 
+> **2026-08-23 — Phase 5b close-out in progress.** Of the work the 2026-08-20/21
+> block left open: the **$ column is filled** and the **`ef_search` sweep ran
+> and is flat** at n=585 (both under Phase 5b below, with the near-dup scan).
+> In flight: the guarded agentic re-baseline at 585 (the guardrail is now
+> wired through `kb_agentic_eval.py` — it never was before) and the measured
+> **verbatim-first** run (`KbAgent(verbatim_first=True)` seeds tool call 1
+> with the user's question deterministically, rather than prompting and
+> hoping).
+
 Phases are deliberately **not renumbered**: FINDINGS.md and `docs/interview/`
 reference them by number. Only the execution order changed.
 
@@ -356,8 +365,10 @@ in order:
 - [ ] **Reranker** — `cohere.rerank-v3-5:0` is ON_DEMAND in-account and
       `KnowledgeBaseVectorSearchConfiguration` carries `rerankingConfiguration`.
       Query-time counter to chunk-size dilution; the only quality lever here that
-      needs no rebuild. Billed per query, not per token. Rate unverified — the
-      Price List API carries no rerank SKU.
+      needs no rebuild. Billed per query, not per token. Rate **verified
+      2026-08-23**: $0.002/search unit (1 query ≤ 100 docs) — the Price List
+      API now carries the SKU (`Cohere Rerank v3.5`), and the pricing page
+      agrees; the earlier "no rerank SKU" note is retracted in FINDINGS.
 - [ ] **Hybrid search** — `overrideSearchType: HYBRID|SEMANTIC`. Aurora
       provisions a GIN `to_tsvector` index for exactly this; **unverified whether
       S3 Vectors supports HYBRID at all.**
@@ -553,17 +564,33 @@ artifact.
       (net negative vs healthy semantic on this key); S3 Vectors rejects
       HYBRID outright. **Warm latency measured too: Aurora p50 0.523 s /
       p95 0.873 s ≈ 2× faster than S3 Vectors 0.960 / 1.797.** Cold-start
-      sample and the $ cost column remain.
-- [ ] **The graph only Aurora can produce: sweep `hnsw.ef_search`** (10 / 40 /
-      100 / 200 — a session-level `SET`, no rebuild) and plot recall@4 against
-      p95 latency. S3 Vectors can only ever be one opaque point on that curve.
-      This is the strongest single exhibit in the whole project.
-      **Caveat found 2026-08-20:** Bedrock issues its own SQL sessions, so the
-      sweep cannot reach the shipped Retrieve path — it needs a direct-SQL
-      harness, and the two curves must be labeled as different instruments.
-- [ ] Also cheap and only possible in Aurora: near-duplicate detection across the
-      corpus (`WHERE a.embedding <=> b.embedding < 0.15`) — answers "are my 585
-      chunks actually distinct?", a question the Retrieve API cannot express.
+      sample remains; the **$ column filled 2026-08-23**
+      (`docs/baselines/2026-08-23-cost-column.md` — verdict: the store is
+      1–3% of marginal cost; DeepSeek dominates at ~$0.006/question; rerank
+      is the priciest retrieval component at $0.002/query; Aurora's real
+      cost is the ~$0.005 cold-visit wake, not the warm query).
+- [x] **The `hnsw.ef_search` sweep — RUN 2026-08-23, and it is a flat line.**
+      (`scripts/aurora_sql_eval.py`, direct SQL via the RDS Data API, one
+      transaction per value so `SET LOCAL` holds.) recall@4/5/10, MRR and
+      per-question ranks are **identical at ef 10/40/100/200** — at n=585 the
+      ef=10 beam already reaches the whole graph, so there is no
+      approximation error to trade. "The strongest single exhibit" exists only
+      at corpus sizes where HNSW actually approximates; the honest chart is
+      the flat line, labeled with why. The salvage: same store/corpus/
+      questions, direct SQL p50 0.154 s vs Bedrock Retrieve 0.523 s — ~70% of
+      the shipped Aurora path's latency is Bedrock, not Postgres. Denominator
+      caveat when citing: sweep recall@5 0.8033 is answerable-only (61);
+      × 61/66 = 0.7424, the shipped-path number exactly. FINDINGS 2026-08-23;
+      `docs/baselines/2026-08-23-aurora-585-efsearch-sweep.json`.
+- [x] Near-duplicate detection — **RUN 2026-08-23: 304 pairs < 0.15**, and the
+      structure is the finding: prose is clean (every prose pair is two
+      sections of the same authored doc; zero cross-document pairs), while the
+      graph registry supplies the mass — ~93 sibling-nerve pairs (closest
+      0.0133, proper vs common palmar digital median), and `--sources` chunks
+      colliding with their own doc's content sections. Measured confusability
+      exactly where the `nerve-*` misses live; feeds the bibliography-move
+      case. FINDINGS 2026-08-23;
+      `docs/baselines/2026-08-23-aurora-585-near-dupes.json`.
 - [ ] **Retrieval-strategy matrix (added 2026-08-20)** — one corpus, one
       ratified key, every strategy a row. Single-shot rows are done (above);
       agentic rows run the Converse tool loop (`scripts/kb_agentic_eval.py`,
