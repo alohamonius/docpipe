@@ -197,10 +197,14 @@ class KbAgent:
         on a tool-use turn, and an intervention has to be able to stop the loop
         before another retrieval round, not after the final answer is composed.
 
-        Deliberately no ``guardContent`` tagging of tool results, matching
-        `llm.py`. Whether scanning retrieved clinical passages causes false
-        refusals is a question for measurement, not for a guess in a comment —
-        see the agentic re-baseline. The role needs `bedrock:ApplyGuardrail`.
+        The question of whether to ``guardContent``-tag got its measured
+        answer on 2026-08-24 (scripts/guardrail_probe.py): untagged, every
+        toolResult turn re-enters the *input* assessment, and the corpus's own
+        text is what trips it — the referral chunk via the MedicalDiagnosis
+        topic, a mechanism chunk via PROMPT_ATTACK at LOW confidence — while
+        the bare questions almost never do (3/66, deterministic). So
+        ``_question_block`` tags the user's question; see its docstring. The
+        role needs `bedrock:ApplyGuardrail`.
         """
         if not self._guardrail_id:
             return {}
@@ -210,6 +214,27 @@ class KbAgent:
                 "guardrailVersion": self._guardrail_version,
             }
         }
+
+    def _question_block(self, question: str) -> dict[str, Any]:
+        """The user's question — ``guardContent``-tagged when a guardrail is on.
+
+        Converse semantics: with no ``guardContent`` block in the request, the
+        guardrail input-assesses ALL user content — which, in a tool loop,
+        includes every retrieved passage riding back in a toolResult turn.
+        Measured 2026-08-24: that is where the blocking actually came from.
+        The 2026-08-23 re-baseline's stochastic 31/61 ever-blocked pool was a
+        lottery over *what got retrieved*, not over the questions — bare
+        questions block 3/66 and deterministically. With this tag present the
+        guardrail input-assesses only the question; model output is still
+        assessed on every iteration, so the topic policy still applies to what
+        the assistant actually says.
+
+        Plain text when no guardrail is configured — ``guardContent`` without a
+        ``guardrailConfig`` is a validation error.
+        """
+        if not self._guardrail_id:
+            return {"text": question}
+        return {"guardContent": {"text": {"text": question}}}
 
     def _seed_verbatim_search(
         self,
@@ -282,7 +307,9 @@ class KbAgent:
         return "\n\n".join(f"[{p.citation}]\n{p.text[:600]}" for p in passages)
 
     def ask(self, question: str) -> AgentSession:
-        messages: list[dict[str, Any]] = [{"role": "user", "content": [{"text": question}]}]
+        messages: list[dict[str, Any]] = [
+            {"role": "user", "content": [self._question_block(question)]}
+        ]
         tool_calls: list[ToolCall] = []
         tokens_in = tokens_out = 0
         stop: str | None = None

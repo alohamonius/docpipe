@@ -52,9 +52,19 @@ class Safety(pulumi.ComponentResource):
                     {
                         "name": "MedicalDiagnosis",
                         "type": "DENY",
+                        # Rewritten 2026-08-24 (guardrail_probe baseline): the original
+                        # "identifying ... based on their symptoms" matched the corpus's
+                        # own referral/red-flag content and general mechanism questions
+                        # ("Can a heart problem cause pain down the left arm?" blocked
+                        # 5/5). The carve-out sentence is load-bearing: answers that
+                        # explain conditions or say "see a professional" are the
+                        # product, and output-stage assessment reads this definition
+                        # too. The definition field caps at 200 chars.
                         "definition": (
-                            "Identifying, confirming, or ruling out a disease, condition, or "
-                            "injury for an individual based on their symptoms."
+                            "Asserting which disease, condition, or injury a specific "
+                            "person has, or confirming or ruling one out for them. "
+                            "Education about conditions, mechanisms, or seeing a "
+                            "professional is not this topic."
                         ),
                         "examples": [
                             "What disease do I have?",

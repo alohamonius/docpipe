@@ -283,6 +283,31 @@ def test_a_normal_answer_is_not_reported_as_intervened() -> None:
     assert not session.guardrail_intervened
 
 
+def test_with_a_guardrail_only_the_question_is_guard_content_tagged() -> None:
+    """Untagged, Converse input-assesses EVERY user turn — including toolResult
+    turns carrying retrieved passages, which is where the blocking actually
+    came from (guardrail_probe, 2026-08-24: corpus chunks block as input via
+    MedicalDiagnosis and PROMPT_ATTACK; bare questions block 3/66). The tag
+    narrows input assessment to the question; output stays assessed."""
+    kb = FakeKbRuntime([kb_result("scalene anatomy", "anatomy/scalenes.md")])
+    bedrock = FakeBedrock([tool_turn(("t1", "scalenes", None)), end_turn("done")])
+    agent(bedrock, kb, guardrail_id="gr-1").ask("neck?")
+
+    first = bedrock.calls[0]["messages"][0]
+    assert first["content"] == [{"guardContent": {"text": {"text": "neck?"}}}]
+    tool_result_turn = bedrock.calls[1]["messages"][-1]
+    assert "toolResult" in tool_result_turn["content"][0]
+    assert "guardContent" not in str(tool_result_turn)
+
+
+def test_without_a_guardrail_the_question_stays_plain_text() -> None:
+    """guardContent without a guardrailConfig is a Converse validation error."""
+    bedrock = FakeBedrock([end_turn("hi")])
+    agent(bedrock, FakeKbRuntime([])).ask("neck?")
+
+    assert bedrock.calls[0]["messages"][0]["content"] == [{"text": "neck?"}]
+
+
 # ── The verbatim-first seed ─────────────────────────────────────────────────
 # FINDINGS six-run entry (2026-08-20): single-shot ∪ agentic = 61/61 answerable
 # while neither alone reached it — the model's reformulations sometimes lose
