@@ -51,7 +51,9 @@ content) via Bedrock Knowledge Bases, with citations.
   (`infra/Pulumi.dev.yaml:17-18`). Live and verified 2026-08-21: cluster
   `docpipe-dev-aurora` **available**, engine 16.14, min 0 / max 1 ACU, Data API
   enabled; Aurora KB **`A44CISMRAM`** (ds `H8PN3JBXPN`) and S3 Vectors KB
-  **`JDNNGSU1JT`** (ds `U0PM4HIXGE`), both holding the same 496-chunk corpus.
+  **`JDNNGSU1JT`** (ds `U0PM4HIXGE`), both holding the same **585**-chunk corpus
+  (reingested 2026-08-22; vector counts verified directly, not trusted from a
+  job status — S3 Vectors 585 vectors, Aurora 585 rows / 585 embeddings).
   The ~15s resume this entry used to assume was **measured at 1.32 s** on the
   Retrieve path (FINDINGS 2026-08-20) — pre-warming on chat-UI open is
   therefore not needed to hide it.
@@ -62,10 +64,14 @@ content) via Bedrock Knowledge Bases, with citations.
   the $ column plus the `hnsw.ef_search` sweep still outstanding. See Phase 5b.
   **The 2026-08-16 deferral is spent: Aurora and the benchmark were built
   anyway on 2026-08-20 — see Current priority.**
-- **KB corpus = `health.studio/build/kb/`**, produced by `pnpm kb:build` — **496
-  chunk-final files + sidecars** since the 2026-08-19 heading split (was 383:
-  192 prose from 20 docs, 191 graph, 1,686,867 B). Both KBs hold the
-  byte-identical 496-chunk corpus. **72 of the 496 are bibliography-only**,
+- **KB corpus = `health.studio/build/kb/`**, produced by `pnpm kb:build` — **585
+  chunk-final files + sidecars** (192 prose from 20 docs, 393 graph). Was 383,
+  then 496 at the 2026-08-19 heading split, then 579, and **585 after the
+  2026-08-21 Sources peel** — four entrapment chunks had grown past Titan v2's
+  8,192-token cap and were producing NO vector at all; `### Sources` was peeled
+  onto siblings with the parent keys kept, so nothing was retired. `radiocarpal`
+  still sits at 8,172 of 8,192 — the build now warns at 90%. Both KBs hold the
+  byte-identical 585-chunk corpus. **78 are bibliography-only**,
   tagged `section: "Sources"` in every sidecar, so retrieval can exclude them
   with a metadata filter today — no rebuild needed. The corpus change measured
   recall- and rank-neutral on the ratified key (0.7879 either way).
@@ -111,7 +117,7 @@ Execution order, and what each step is actually blocked on:
    Land the consumer half before or with the producer half, never after.
 5. **Aurora** — the five gaps in Phase 2, then a second KB over the same bucket.
    ✅ **done 2026-08-20** — all five closed, three applies run, KB `A44CISMRAM`
-   ACTIVE, 496/496 ingested.
+   ACTIVE, 496/496 ingested (585/585 since 2026-08-22).
 6. **Measure** — recall@k / MRR / p50 / p95 / $, plus the `hnsw.ef_search` sweep.
    ◐ **mostly done 2026-08-20** — recall, MRR and warm p50/p95 measured on both
    stores, single-shot and agentic. **Still open: the $ column and the
@@ -416,6 +422,96 @@ real value before the heavier worker/benchmark work starts.
 - [ ] Privacy pass: opaque conversation IDs only, no user PII in payloads
 - [ ] E2E: message from the app → API Gateway → Bedrock → reply rendered
 
+## Phase 4b — Guided assessment: the agent that runs a protocol, not a Q&A
+
+**The product question, asked 2026-08-23: can the agent *do* things — walk the
+user through physical tests and hand back exercises — rather than only answer?**
+
+**The content already exists, graded and cited.** This is not corpus work:
+
+| doc | what it provides |
+|---|---|
+| `03-finding-your-compensations.md` | Tier 1 Mirror ★★☆, Tier 2 Movement Speed ★★☆, Tier 3 Cross-Body ★☆☆, Tier 4 Breathing ★★☆ — plus *Important Caveats About Self-Assessment* |
+| `04-neuromuscular-reeducation.md` | Practical Techniques, Progression Framework, Measuring Progress, *When Re-Education Isn't Enough* |
+| `15-medical-red-flags.md` | the screening gate, with a machine-readable summary table |
+| `evidence-honesty.md` | the downgrade rule — the machinery for presenting a ★☆☆ finding honestly |
+
+### The constraint is NOT the guardrail
+
+The instinct is that `safety.py` blocks this. Read again, it likely does not:
+`MedicalDiagnosis` denies *"identifying, confirming, or ruling out a disease,
+condition, or injury for an individual based on their symptoms"*. "One shoulder
+sits lower, which is consistent with upper-trap dominance" is not that, and
+exercises are not "medications, drugs, or specific medical treatments".
+**Assume it passes, then verify against the live guardrail before building on
+the assumption** — that prediction is exactly the kind this repo has been wrong
+about before.
+
+### The constraint the corpus names about itself
+
+Two findings already on record make the real argument:
+
+- **scapular dyskinesis is a normal finding, and the examiner knowing about the
+  pain makes it commoner** (health.studio FINDINGS 2026-08-18)
+- `12-pain-science.md` — fear-avoidance, catastrophizing, DIMs/SIMs:
+  **telling someone their body is asymmetric can make their pain worse**
+
+So the hazard is not the agent saying something forbidden. It is the agent
+doing exactly what it was asked — running tests, finding an asymmetry,
+reporting it — where **the reporting is the harm**. Everyone has asymmetries; a
+system built to hunt for them will always find some. A ★☆☆ Tier 3 finding
+presented as "here is what is wrong with you" is worse than no finding at all.
+
+That is a design constraint, not a filter to bolt on afterwards.
+
+### Blockers
+
+- [x] **Guardrail on the agentic path** — `KbAgent` sent no `guardrailConfig`
+      at all until 2026-08-23. Cleared; the loop is guarded on every iteration
+      and reports `AgentSession.guardrail_intervened`.
+- [ ] **Multi-turn state.** `KbAgent.ask()` is one question → one answer. An
+      assessment is inherently stateful: propose test → user reports what they
+      saw → interpret → next test or exercise. That is a different object, not
+      a longer prompt.
+- [ ] **More than one tool.** There is exactly one, `search_kb`. This needs at
+      minimum a red-flag screen and some notion of recording a finding.
+- [ ] **An instrument.** Every number here is recall@k on 66 questions. "Did it
+      run a good assessment" is not that, and without a new instrument this
+      ships unmeasured — which is precisely how graph expansion came to be
+      built on a single anecdote (FINDINGS 2026-08-23). Candidate assertions:
+      the red-flag screen ran first and was not bypassable; no finding was
+      presented above its evidence grade; no pattern was named that the user
+      did not report.
+- [ ] **Verify the guardrail actually permits the flow** against the live
+      guardrail, with real test-interpretation language.
+
+### Open questions — decide before writing code
+
+- **Does the assistant ever name a pattern** ("upper-trap dominant"), or only
+  reflect back what the user reported? Naming is more useful and is the step
+  that walks toward diagnosis. This is the single highest-leverage decision in
+  the phase.
+- **Who owns the red-flag gate** — the agent, or health.studio? Phase 4 already
+  lists an existing red-flag-gate component in the app. A gate in the app is
+  harder to prompt-inject past; a gate in the agent travels with every caller.
+- **What does a finding persist as?** An opaque session, or something the user
+  accumulates over weeks (`Creating Your Personal Compensation Map` implies the
+  latter). That is a privacy decision as much as a product one — Phase 4
+  requires opaque conversation IDs and no PII.
+- **Re-measurement as the honest exit:** *Measuring Progress* in `04` means the
+  same test re-run later. That is the only claim of benefit the system can make
+  that is not a promise.
+
+### Smallest honest first version
+
+Red-flag screen, non-bypassable → **one** Tier 1 test (★★☆, observation-only)
+→ user reports what they saw → **one** exercise from `04` with its evidence
+grade shown → progress = re-run the same test.
+
+One test, one exercise, one loop. It exercises every hard part — state,
+multi-tool, the gate, evidence-grade presentation — without committing to a
+protocol tree, and it gives the instrument something to score.
+
 ## Phase 5 — Async worker (compute TBD)
 
 **Open decision: EKS vs Lambda vs Fargate.** EKS was chosen to demonstrate the
@@ -446,7 +542,7 @@ latency, recall, cost, and where each wins."** The measured decision *is* the
 artifact.
 
 - [x] Both KBs live over the same `corpus/` prefix; identical Titan v2 @ 1024
-      — live 2026-08-20, both verified holding the 496-chunk corpus
+      — live 2026-08-20; both verified holding the 585-chunk corpus 2026-08-22
 - [x] Golden set: the ratified 66-question key (v2, 2026-08-17) serves this
 - [x] **recall@k / MRR per store — measured 2026-08-20** (FINDINGS entries,
       reports in `docs/baselines/2026-08-20-*`): recall 0.7879 identical on
@@ -466,7 +562,7 @@ artifact.
       sweep cannot reach the shipped Retrieve path — it needs a direct-SQL
       harness, and the two curves must be labeled as different instruments.
 - [ ] Also cheap and only possible in Aurora: near-duplicate detection across the
-      corpus (`WHERE a.embedding <=> b.embedding < 0.15`) — answers "are my 496
+      corpus (`WHERE a.embedding <=> b.embedding < 0.15`) — answers "are my 585
       chunks actually distinct?", a question the Retrieve API cannot express.
 - [ ] **Retrieval-strategy matrix (added 2026-08-20)** — one corpus, one
       ratified key, every strategy a row. Single-shot rows are done (above);
@@ -482,9 +578,17 @@ artifact.
         session_recall, store- and mode-agnostic; single-shot ∪ agentic
         = 61/61 (FINDINGS six-run entry). Next measured run: verbatim
         query as tool call 1, then reformulate.
-      - [ ] rerank rows ride the existing `RERANK=--rerank` path when the
-        3 req/min Cohere quota makes a full run tolerable (~25 min, FINDINGS
-        2026-08-17)
+      - [x] **rerank rows — measured 2026-08-22/23, both stores.** recall@5
+        **0.7879**, MRR **0.6571**, identical on S3 Vectors and Aurora — and
+        identical question by question (66/66 same hit, 66/66 same rank, 63/66
+        identical top-5). The cross-encoder demotes vector search to a
+        candidate generator for one 25-doc pool, so every property that
+        distinguishes the backends lives *below* it. **On the shipped path,
+        Aurora vs S3 Vectors is not a retrieval-quality decision.**
+        The sweep must be **paced, not retried**: Cohere Rerank 3.5 is 3
+        req/min at ACCOUNT level and `Adjustable: false`, so ~22 min per store
+        is a floor set by AWS, and both stores share one bucket — they cannot
+        run in parallel.
       - [x] **(a) corpus-native graph expansion — BUILT 2026-08-21**
         (`docpipe_core.graph`, `make graph-index`, `graph expand` in the
         playground). The body-graph chunks are a typed, per-edge-graded graph
@@ -492,13 +596,29 @@ artifact.
         sections yield **247 edges** (`in_chain` 84, `has_member` 84,
         `innervated_by` 56, `supplies` 23; 224 graded, 56 `[VERIFIED]`).
         Whole index = **106 KB of JSON** — no store, no LLM, no AWS resource.
-        First A/B on *"what connects the rectus abdominis to the rest of the
-        body?"*: vector search returned four `Body Connection Graph` chunks and
-        **never surfaced either fascial-line chunk**; expansion added both
-        (SFL ★★☆, FFL ★☆☆) for +802 input tokens. Still to do: score it
-        against the ratified key as its own instrument — recall@k and MRR are
-        **not** comparable across expanded and unexpanded runs, same rule this
-        matrix already applies to agentic `session_recall`.
+        **SCORED 2026-08-23, and the verdict is negative: dominated by `k=9`.**
+        Against the nine genuine misses of the reranked 585 baseline, graph
+        expansion (budget 4) rescues **2**; plain `k=9` rescues **6**, and the
+        graph's two are a strict subset of the six. Expansion spends up to four
+        extra passages, so `k=5+4` and `k=9` are the same context budget — at
+        that budget the graph loses. Three of the nine produce **zero hops**,
+        because their only relationship content is the prose sections that
+        carry no parseable ids, so it is thinnest exactly where retrieval is
+        weakest.
+        The A/B that justified building it — *"vector search never surfaced
+        either fascial-line chunk; expansion added both"* — ran at `top_k=4`.
+        That is evidence the right chunks sat just outside a narrow window,
+        i.e. an argument for widening `k`, read as an argument for traversal
+        because traversal was what was being built. **A demo showing "X was
+        missing and my feature added it" is not evidence until the null control
+        has been run.**
+        Not retracted, scoped: this is retrieval *reach* on a mostly
+        single-hop question set, and says nothing about answer quality or the
+        agentic path. `chain-05` — which rerank loses and traversal recovers —
+        shows the edge does know something the cross-encoder does not.
+        **Do not ship as a default.** If it is to be defended, the test is a
+        question set that *requires* two hops; if it does not win there, it
+        does not win.
       - [ ] **(b) managed Bedrock GraphRAG on Neptune Analytics — priced
         2026-08-21, and the ruling is: not now.** Price List API, us-east-1:
         **$0.03 per m-NCU-hour**, smallest tier 16 m-NCU = **$0.48/hr ≈
