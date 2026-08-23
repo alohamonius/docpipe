@@ -54,6 +54,17 @@ DEFAULT_MAX_ITERATIONS = 5
 
 SEARCH_TOOL_NAME = "search_kb"
 
+# The seeded first call's toolUseId. Client-chosen ids are legal in Converse
+# history — the API only requires every toolUse to be answered by a matching
+# toolResult, which the seed pair satisfies.
+VERBATIM_SEED_TOOL_USE_ID = "verbatim-seed"
+
+_VERBATIM_SEED_SYSTEM_NOTE = (
+    " The knowledge base has already been searched with the user's question "
+    "verbatim (the first tool call above); search again only with reformulated "
+    "or narrowed queries."
+)
+
 # The one-line min_evidence hint is load-bearing: the 2026-08-18 run showed the
 # model setting the floor on every call from nothing but this sentence.
 _TOOL_CONFIG: dict[str, Any] = {
@@ -134,6 +145,7 @@ class KbAgent:
         temperature: float = 0.3,
         guardrail_id: str | None = None,
         guardrail_version: str = "DRAFT",
+        verbatim_first: bool = False,
         max_retries: int = 4,
         sleep: Callable[[float], None] = time.sleep,
         rng: Callable[[], float] = random.random,
@@ -144,10 +156,13 @@ class KbAgent:
         self.max_iterations = max_iterations
         self.top_k = top_k
         self.search_type = search_type
+        self.verbatim_first = verbatim_first
         # Any on purpose: tests inject fakes, and the boto3-stubs TypedDicts
         # would force every literal below into casts for no runtime gain.
         self._bedrock: Any = bedrock_client or boto3.client("bedrock-runtime")
         self._system = system + " Use the search_kb tool for facts."
+        if verbatim_first:
+            self._system += _VERBATIM_SEED_SYSTEM_NOTE
         self._max_tokens = max_tokens
         self._temperature = temperature
         self._guardrail_id = guardrail_id
@@ -196,6 +211,68 @@ class KbAgent:
             }
         }
 
+    def _seed_verbatim_search(
+        self,
+        question: str,
+        messages: list[dict[str, Any]],
+        tool_calls: list[ToolCall],
+    ) -> None:
+        """Make tool call 1 the user's question verbatim, before the model runs.
+
+        Why (FINDINGS six-run entry, 2026-08-20): single-shot ∪ agentic covered
+        61/61 answerable questions while neither strategy alone did — the
+        model's reformulations sometimes lose exactly what embedding the
+        verbatim question finds. Prompting the model to search verbatim first
+        would leave that to compliance; seeding the call makes it a protocol
+        fact. The seed rides into history as an ordinary toolUse/toolResult
+        pair, counts as a session tool call for scoring, and the system prompt
+        tells the model it already happened so it reformulates instead of
+        repeating.
+
+        One semantic this changes on the guarded path: the seed retrieval runs
+        *before* any Converse call, so a question the guardrail would block at
+        input still performs one retrieval. That is deliberate — the eval
+        measures retrieval reach — but a shipped flow that must not retrieve
+        for blocked inputs would need the guardrail consulted first.
+        """
+        passages = self._with_backoff(
+            lambda: self.kb.retrieve(
+                question,
+                top_k=self.top_k,
+                min_evidence=None,
+                rerank=False,
+                search_type=self.search_type,
+            )
+        )
+        tool_calls.append(ToolCall(query=question, min_evidence=None, passages=passages))
+        messages.append(
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "toolUse": {
+                            "toolUseId": VERBATIM_SEED_TOOL_USE_ID,
+                            "name": SEARCH_TOOL_NAME,
+                            "input": {"query": question},
+                        }
+                    }
+                ],
+            }
+        )
+        messages.append(
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "toolResult": {
+                            "toolUseId": VERBATIM_SEED_TOOL_USE_ID,
+                            "content": [{"text": self._render(passages)}],
+                        }
+                    }
+                ],
+            }
+        )
+
     def _render(self, passages: list[RetrievedPassage]) -> str:
         """What the model reads back. 600 chars/passage: enough to ground an
         answer, small enough that the stateless re-pay tax (every prior tool
@@ -211,6 +288,9 @@ class KbAgent:
         stop: str | None = None
         answer = ""
         started = self._clock()
+
+        if self.verbatim_first:
+            self._seed_verbatim_search(question, messages, tool_calls)
 
         for _ in range(self.max_iterations):
             response = self._with_backoff(

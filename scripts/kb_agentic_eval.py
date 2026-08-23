@@ -45,6 +45,9 @@ def main() -> int:
     parser.add_argument("--k", type=int, default=5)
     parser.add_argument("--search-type", choices=("SEMANTIC", "HYBRID"), default=None)
     parser.add_argument("--semantic-score-is-distance", action="store_true")
+    parser.add_argument("--guardrail-id", default=None)
+    parser.add_argument("--guardrail-version", default="DRAFT")
+    parser.add_argument("--verbatim-first", action="store_true")
     parser.add_argument("--limit", type=int, default=None, help="first N questions (smoke test)")
     parser.add_argument("--dry-run", action="store_true", help="allow an unratified key")
     parser.add_argument("--profile", default=PROFILE)
@@ -66,6 +69,9 @@ def main() -> int:
         bedrock_client=session.client("bedrock-runtime"),
         top_k=args.k,
         search_type=args.search_type,
+        guardrail_id=args.guardrail_id,
+        guardrail_version=args.guardrail_version,
+        verbatim_first=args.verbatim_first,
     )
 
     questions = question_set.questions[: args.limit] if args.limit else question_set.questions
@@ -118,6 +124,12 @@ def main() -> int:
         "search_type": args.search_type,
         "semantic_score_is_distance": args.semantic_score_is_distance,
         "rerank": False,
+        "verbatim_first": args.verbatim_first,
+        "guardrail_id": args.guardrail_id,
+        "guardrail_version": args.guardrail_version if args.guardrail_id else None,
+        "guardrail_interventions": [
+            r["id"] for r in results if r["stop_reason"] == "guardrail_intervened"
+        ],
         "knowledge_base_id": args.kb_id,
         "question_set": {
             "version": question_set.version,

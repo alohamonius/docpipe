@@ -281,3 +281,56 @@ def test_a_normal_answer_is_not_reported_as_intervened() -> None:
     session = agent(bedrock, FakeKbRuntime([]), guardrail_id="gr-1").ask("scalenes?")
 
     assert not session.guardrail_intervened
+
+
+# ── The verbatim-first seed ─────────────────────────────────────────────────
+# FINDINGS six-run entry (2026-08-20): single-shot ∪ agentic = 61/61 answerable
+# while neither alone reached it — the model's reformulations sometimes lose
+# what embedding the verbatim question finds. The seed makes call 1 the user's
+# question as a protocol fact rather than a prompt the model may ignore.
+
+
+def test_verbatim_first_seeds_call_one_with_the_exact_question() -> None:
+    bedrock = FakeBedrock([end_turn("Grounded answer.")])
+    kb_runtime = FakeKbRuntime([kb_result("seed passage", "anatomy/seed.md")])
+    session = agent(bedrock, kb_runtime, verbatim_first=True).ask("why does my neck click?")
+
+    # The retrieval ran with the question verbatim and is a scored tool call.
+    assert session.tool_calls[0].query == "why does my neck click?"
+    assert session.tool_calls[0].passages[0].text == "seed passage"
+
+    # The model's first Converse call sees the seed as a normal history pair:
+    # assistant toolUse, then a user toolResult with the SAME id.
+    history = bedrock.calls[0]["messages"]
+    tool_use = history[1]["content"][0]["toolUse"]
+    assert history[1]["role"] == "assistant"
+    assert tool_use["name"] == "search_kb"
+    assert tool_use["input"] == {"query": "why does my neck click?"}
+    tool_result = history[2]["content"][0]["toolResult"]
+    assert history[2]["role"] == "user"
+    assert tool_result["toolUseId"] == tool_use["toolUseId"]
+    assert "seed passage" in tool_result["content"][0]["text"]
+
+    # And the system prompt says it already happened, so the model reformulates
+    # instead of repeating the identical query.
+    assert "already been searched" in bedrock.calls[0]["system"][0]["text"]
+
+
+def test_seed_then_model_reformulations_accumulate_in_order() -> None:
+    bedrock = FakeBedrock([tool_turn(("id-1", "cervical crepitus", None)), end_turn("Both.")])
+    kb_runtime = FakeKbRuntime([kb_result("p", "anatomy/x.md")])
+    session = agent(bedrock, kb_runtime, verbatim_first=True).ask("neck click?")
+
+    assert [t.query for t in session.tool_calls] == ["neck click?", "cervical crepitus"]
+    assert len(kb_runtime.calls) == 2
+
+
+def test_without_the_flag_no_seed_happens() -> None:
+    bedrock = FakeBedrock([end_turn("ok")])
+    kb_runtime = FakeKbRuntime([])
+    session = agent(bedrock, kb_runtime).ask("q")
+
+    assert session.tool_calls == []
+    assert kb_runtime.calls == []
+    assert len(bedrock.calls[0]["messages"]) == 1
+    assert "already been searched" not in bedrock.calls[0]["system"][0]["text"]
