@@ -119,6 +119,74 @@ role, not a decision. Everything is per-user (opaque IDs from the app; no
 PII/PHI crosses to AWS), and the chat path can stay up permanently while the
 worker + Aurora side is torn down between sessions.
 
+## The benchmark: S3 Vectors vs Aurora pgvector, same corpus, same questions
+
+Two Bedrock Knowledge Bases over one S3 source bucket, differing in exactly
+one slot — the vector store. Same 585-chunk corpus, same Titan v2 @ 1024
+embeddings, one ratified 66-question answer key (61 answerable + 5 the corpus
+deliberately cannot answer). Every retrieval strategy is a row; every number
+has a signed report in [`docs/baselines/`](docs/baselines/) and a dated entry
+in [`FINDINGS.md`](FINDINGS.md).
+
+Recall below is **on the 61 answerable questions**. Single-shot rows score the
+one returned list (recall@5); agentic rows score the whole session (any tool
+call's top-5 — a different instrument, so don't read across the gap as if it
+were one column).
+
+| strategy | S3 Vectors | Aurora | per 1k questions |
+|---|---|---|---|
+| single-shot, semantic, k=5 | 0.7869 | 0.8033 | $0.06 / ~$0.01 warm |
+| single-shot + Cohere rerank (25-doc pool) | **0.8525** | **0.8525** — identical, question by question | + $2.00 |
+| agentic loop (DeepSeek drives `search_kb`), guarded | 0.8033 | 0.8033 (mean of 2 ea.) | ~$4.60 |
+| agentic loop, unguarded | 0.9057 (mean of 4, both stores) | ← | ~$5.70 |
+| agentic + verbatim-first seed | **0.9467** (3 of 4 runs = 58/61) | ← | ~$5.70 |
+
+**What the table actually says:**
+
+1. **The store is not the lever.** Reranked, the two stores return the same
+   top-5 question by question (66/66 same hit, 66/66 same rank) — the
+   cross-encoder demotes both to candidate generators for the same pool. On
+   the agentic path the loop, not the store, buys the recall. The real levers
+   all live *above* the store.
+2. **The guardrail gives back everything the loop buys.** Guarded agentic
+   recall (0.8033) lands exactly on single-shot. It intervenes on 20–23 of 66
+   questions per run, stochastically (31-question pool, none blocked every
+   run), concentrated on the clinical strata — 4/4 nerve, 3/3 referral, 2/2
+   entrapment questions ever-blocked. Tuning it is on the critical path.
+3. **Seeding tool call 1 with the user's verbatim question** (instead of
+   letting the model reformulate from scratch) is worth +4 points and
+   collapses run variance — at the cost of zeroing abstention on the
+   questions the corpus can't answer, because the seed retrieves before the
+   model can decline.
+
+**Where each store wins:**
+
+| | S3 Vectors | Aurora pgvector |
+|---|---|---|
+| warm Retrieve p50 / p95 | 0.960 s / 1.797 s | **0.523 s / 0.873 s** (~2×) |
+| at rest | **$0.00** | ~$0.12/mo floor (storage + backup survive auto-pause) |
+| cold start | none | resume ~15 s; first call after idle measured at 23.5 s; ~$0.005 per cold visit |
+| per query | flat $0.000056, any traffic pattern | ~$0.000009 warm — steady traffic wins, sparse traffic pays the wake |
+| HYBRID search | rejected outright | supported (and net-negative on this corpus: 0.5331 MRR vs 0.5646 semantic) |
+| introspection | opaque | full SQL: the `ef_search` sweep, near-dup scan, `EXPLAIN` |
+
+The introspection row is where Aurora earned its keep this phase, in both
+directions: the `hnsw.ef_search` sweep came back **flat** (identical recall
+and per-question ranks at ef 10–200 — 585 vectors is too small for HNSW to
+approximate, and only direct SQL could prove that), and the same instrument
+showed **~70% of the shipped path's warm latency is Bedrock overhead, not the
+database** (0.154 s direct SQL vs 0.523 s via Retrieve). The near-dup scan
+answered "are my chunks distinct": prose entirely yes, while the anatomical
+nerve registry carries ~93 sibling pairs the embedder can barely separate —
+measured confusability exactly where retrieval misses live.
+
+**The verdict:** on the shipped path, Aurora vs S3 Vectors is not a
+retrieval-quality decision and not a meaningful cost decision (the store is
+1–3% of marginal cost; the LLM loop is ~100× the retrieval it drives). It is
+an operational-shape decision — latency floor and SQL introspection vs zero
+standing cost and no wake — and this repo keeps both because the benchmark
+*was* the deliverable.
+
 ## Health & privacy constraints
 
 - The assistant is **non-diagnostic**: system prompt forbids diagnosis and
@@ -238,7 +306,8 @@ is the default recommendation.
 - **Aurora `min_capacity = 0` costs a cold first query.** When the cluster has
   auto-paused, the first connection pays a resume latency before it serves.
   We accept that because the summary worker is async — a few seconds on the
-  first job after idle is invisible to users. *Measured resume time (Phase 5,
-  once Aurora is live): **TODO — time it and record the number here.***
+  first job after idle is invisible to users. *Measured: the first call after
+  idle took **23.5 s** (vs 1.32 s warm, 2026-08-23); the Data API surfaces the
+  resume as a retryable `DatabaseResumingException` for ~15 s of that.*
 - **Titan v2 embeddings pinned to 1024 dims** (`dimensions = 1024`), matching
   the S3 Vectors index. Chosen once, up front — the index can't mix dimensions.

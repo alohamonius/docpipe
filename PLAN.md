@@ -691,7 +691,11 @@ artifact.
       the agent's tool-call trace, latency and token cost. Local because the
       AWS credentials live here; once Phase 3's API exists it can point there
       instead.
-- [ ] Writeup: a results table + "where each wins" — the README's real headline
+- [x] Writeup — **landed 2026-08-23** as README "The benchmark" section:
+      answerable-denominator results table (single-shot / rerank / agentic
+      guarded–unguarded–verbatim), the three punchlines (the store is not the
+      lever; the guardrail gives back what the loop buys; verbatim seed +4),
+      and the where-each-wins table with the introspection verdict.
 
 **Verified prices (AWS Price List API, us-east-1, 2026-08-13)** so the cost
 column is not guesswork: Serverless v2 **$0.12/ACU-Hr**, storage **$0.10/GB-Mo**,
