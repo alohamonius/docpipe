@@ -2,7 +2,9 @@
 
 Every rate below is sourced; nothing is a guess. Sizes are measured on the live
 585-chunk corpus (2026-08-23). Agentic token counts are from the 2026-08-20
-n=66 runs — re-check against the guarded 2026-08-23 re-baseline when citing.
+n=66 runs and confirmed by the 2026-08-23 re-baseline (unguarded/verbatim runs
+444–517k in per 66 questions — same ~$0.0055/question; guarded runs are
+~20% cheaper, ~363–396k, because blocked questions stop early).
 
 ## Rates (us-east-1, retrieved 2026-08-23)
 

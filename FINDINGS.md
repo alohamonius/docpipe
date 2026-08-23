@@ -2434,3 +2434,63 @@ is the reranker, not the store; and Aurora's cost is shaped by traffic
 *pattern* (steady amortizes the wake; sparse pays ~$0.005 per cold visit)
 while S3 Vectors is flat per-request — the only regime where the store choice
 shows up in money at all.
+
+## 2026-08-23 — the guardrail costs ten points of recall exactly where the corpus is most clinical; the verbatim seed buys four back
+
+The eval could never see the guardrail: `KbAgent` has applied it since
+8301ab1, but `kb_agentic_eval.py` never passed a guardrail id — so **every
+agentic number to date was measured unguarded**, including the six-run matrix.
+Fixed, and re-baselined at 585 with the full decomposition (14 runs, two per
+cell, `--workers 6`; recall is concurrency-agnostic, wall stats are not):
+
+| strategy (585, semantic) | runs | mean session_recall |
+|---|---|---|
+| guarded | 0.7705 / 0.7869 / 0.8197 / 0.8361 | **0.8033** |
+| guarded HYBRID | 0.8197 / 0.8525 | 0.8361 |
+| unguarded (null control) | 0.8689 / 0.9016 / 0.9180 / 0.9344 | **0.9057** |
+| unguarded + verbatim seed | 0.9344 / 0.9508 / 0.9508 / 0.9508 | **0.9467** |
+
+**The decomposition the control makes possible:**
+- **Corpus 496→585: no effect.** Unguarded 585 mean 0.9057 vs the 2026-08-20
+  semantic runs' 0.9098 — within run variance.
+- **Guardrail: −10 points**, from 20–23 interventions per run.
+- **Verbatim-first seed: +4 points**, and it collapses variance — three of
+  four runs land on exactly 58/61.
+
+**The guardrail's blocks are stochastic and land on the corpus's own use
+case.** Across six guarded runs, 31 distinct questions were intervened on and
+**zero were intervened on in all six** — temperature and output-scanning make
+the block a probability, not a property of the question. Per stratum
+(ever-blocked / total): nerve **4/4**, refer **3/3**, entr **2/2**, gap 5/6,
+conn 7/15. Ten questions were blocked *before any tool call* at least once —
+among them `prose-02` (the MRI/bulging-disc question whose corpus answer IS
+the pain-science reassurance content) and `conn-04` (the red-flag question).
+The questions phrased as a person describing their own symptoms — the reason
+the corpus exists — are what `MedicalDiagnosis` pattern-matches.
+
+**Consequence for Phase 4b's open prediction** ("the guardrail probably
+permits this — verify"): verified, and the prediction was wrong in the
+direction the repo predicted it might be. The DRAFT guardrail as configured
+blocks the corpus's core question shapes ~⅓ of the time. Tuning it (or
+narrowing the denied-topic language) is now on the critical path **before
+Phase 3 ships**, not a Phase 4b footnote.
+
+**Verbatim-first, measured** (the run the six-run entry pointed at): per-run
+misses draw only from {`conn-05`, `conn-08`, `conn-10`, `nerve-04`,
+`index-01`}; the union over four runs is **60/61**, and `conn-05` is the one
+answerable question nothing agentic ever hits (plain `k=9` does — its chunk
+sits just past every top-5). Two costs, both structural: **abstention on the
+not-covered class drops to 0.0** — the seed retrieves unconditionally, so
+every `gap-*` question returns forbidden chunks before the model can decline —
+and `no_tool_questions` goes to zero by construction. The seed should ship
+for answerable traffic, but it removes the "the model chose not to search"
+behavior that was doing quiet abstention work.
+
+Instrument warning for the cell nobody should run naively: guarded+verbatim
+would score high session_recall while the user sees a refusal — the seed
+retrieves before the guardrail can stop anything, so recall stops measuring
+what the user gets. Decide what the shipped config is first, then build the
+instrument for it.
+
+Evidence: `docs/baselines/2026-08-23-{s3vectors,aurora}-585-agentic-*.json`
+(14 reports, config in each).

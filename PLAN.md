@@ -180,14 +180,15 @@ Execution order, and what each step is actually blocked on:
 > contract, Population B denominator) and coverage priority are resolved in the
 > platform repo, not here. The sources-chunks handling decision stays open.
 
-> **2026-08-23 — Phase 5b close-out in progress.** Of the work the 2026-08-20/21
-> block left open: the **$ column is filled** and the **`ef_search` sweep ran
-> and is flat** at n=585 (both under Phase 5b below, with the near-dup scan).
-> In flight: the guarded agentic re-baseline at 585 (the guardrail is now
-> wired through `kb_agentic_eval.py` — it never was before) and the measured
-> **verbatim-first** run (`KbAgent(verbatim_first=True)` seeds tool call 1
-> with the user's question deterministically, rather than prompting and
-> hoping).
+> **2026-08-23 — Phase 5b close-out.** Everything the 2026-08-20/21 block left
+> open is now measured: the **$ column** (store is 1–3% of marginal cost), the
+> **`ef_search` sweep** (flat at n=585), the **near-dup scan** (304 pairs, all
+> graph registry), the **guarded re-baseline + null controls** (guardrail
+> −10 points, stochastic, on the clinical strata) and the **verbatim-first
+> run** (+4 points, 0.9467). All under Phase 5b below with FINDINGS entries.
+> What the close-out surfaced as new critical-path work: **the DRAFT guardrail
+> blocks the corpus's own question shapes ~⅓ of the time — tune it before
+> Phase 3 ships.** Only the writeup remains.
 
 Phases are deliberately **not renumbered**: FINDINGS.md and `docs/interview/`
 reference them by number. Only the execution order changed.
@@ -493,8 +494,17 @@ That is a design constraint, not a filter to bolt on afterwards.
       the red-flag screen ran first and was not bypassable; no finding was
       presented above its evidence grade; no pattern was named that the user
       did not report.
-- [ ] **Verify the guardrail actually permits the flow** against the live
-      guardrail, with real test-interpretation language.
+- [x] **Verify the guardrail actually permits the flow** — verified 2026-08-23,
+      and the answer is **no, not reliably**: on the ratified question set the
+      DRAFT guardrail intervenes on a 31-question pool (~20–23 per run,
+      stochastic — zero questions blocked in all six runs), covering 4/4
+      nerve, 3/3 refer, 2/2 entrapment questions, and blocks some *before any
+      retrieval* — including `prose-02`, whose corpus answer is the
+      pain-science reassurance content. Symptom-shaped first-person questions
+      are what `MedicalDiagnosis` pattern-matches, and test-interpretation
+      language lives in the same space. **The blocker inverted: this phase
+      needs the guardrail tuned, not verified** — and so does Phase 3.
+      (FINDINGS 2026-08-23 re-baseline entry.)
 
 ### Open questions — decide before writing code
 
@@ -603,8 +613,18 @@ artifact.
       - [x] S3 Vectors agentic · [x] Aurora agentic · [x] Aurora HYBRID
         agentic — two runs each, 2026-08-20: all land 0.89–0.95
         session_recall, store- and mode-agnostic; single-shot ∪ agentic
-        = 61/61 (FINDINGS six-run entry). Next measured run: verbatim
-        query as tool call 1, then reformulate.
+        = 61/61 (FINDINGS six-run entry). ⚠️ Those runs were **unguarded**
+        (the eval never passed a guardrail id — FINDINGS 2026-08-23).
+      - [x] **Re-baseline at 585 with the guardrail + null controls +
+        verbatim-first — 14 runs, 2026-08-23** (FINDINGS entry): corpus
+        496→585 costs nothing (0.9057 vs 0.9098 unguarded); the **guardrail
+        costs −10 points** (0.8033 guarded), stochastically — 31-question
+        block pool, zero always-blocked, nerve 4/4 / refer 3/3 / entr 2/2
+        ever-blocked; the **verbatim seed buys +4 back** (0.9467, three of
+        four runs at exactly 58/61; union 60/61, `conn-05` the one answerable
+        question nothing agentic ever hits). Trade-off: the seed zeroes
+        abstention on the not-covered class. Guardrail tuning is now on the
+        critical path before Phase 3 ships.
       - [x] **rerank rows — measured 2026-08-22/23, both stores.** recall@5
         **0.7879**, MRR **0.6571**, identical on S3 Vectors and Aurora — and
         identical question by question (66/66 same hit, 66/66 same rank, 63/66
