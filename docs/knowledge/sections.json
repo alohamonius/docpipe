@@ -1,0 +1,10 @@
+{
+  "bedrock":   { "title": "Bedrock's platform limits", "what": "What the managed service accepts, rejects and silently changed under us." },
+  "aurora":    { "title": "Aurora as a vector store", "what": "Serverless v2 at min_capacity 0, its cold start, and how Bedrock scores it." },
+  "corpus":    { "title": "The corpus itself", "what": "Chunking, growth, duplicates, and the graph hiding inside it." },
+  "retrieval": { "title": "Measuring retrieval", "what": "Recall and MRR, the rerank lever, and what each probe actually proved." },
+  "agentic":   { "title": "The agentic loop", "what": "What a multi-search tool loop does that a single shot cannot." },
+  "guardrail": { "title": "The guardrail", "what": "What it blocked, and what it turned out to be blocking instead." },
+  "infra":     { "title": "Pulumi, state and drift", "what": "The stack, its backend, and every time the written plan lagged the deployed one." },
+  "cost":      { "title": "What it costs", "what": "The marginal dollar, and which component actually owns it." }
+}
