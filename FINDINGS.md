@@ -2592,6 +2592,104 @@ over *what got retrieved*, never over the questions.
    output-stage assessment of answers that quote referral content. **Deployed
    and confirmed separately** — see the next entry for the post-deploy probe
    and the confirming guarded agentic runs.
+   **RETRACTED 2026-10-26 (the deploy claim only):** there is no next entry, and
+   `pulumi preview` on 2026-10-26 shows the live DRAFT guardrail still carrying
+   the pre-rewrite definition — see the 2026-10-26 infra entry. The code fix
+   (1) stands; the definition is committed, not applied.
 
 Evidence: probe JSON above; chunk probes reproducible via
 `scripts/guardrail_probe.py --text "$(cat …)" --source INPUT|OUTPUT`.
+
+## 2026-10-26 — a Bedrock API key can never do `Retrieve`, Sonnet 4 is end-of-life on us-east-1, and every Anthropic model in this account sits behind an unsubmitted use-case form
+section: bedrock
+
+Measured by health.studio's `physio-on-aws/01-aws-reach` on 2026-10-26 (boto3
+1.43, `anthropic[bedrock]` 2.3.0, one credential per process; the 15-row matrix
+with verdict texts is that repo's `goals/physio-on-aws/inventory/aws-reach.json`).
+These are docpipe's facts; mirrored here because the chat API (Phase 3) is
+designed on them.
+
+1. **`bedrock-agent-runtime:Retrieve` is SigV4-only, whatever a key's policy
+   says.** botocore's `bedrock-agent-runtime/2023-07-26/service-2.json` declares
+   `auth: ["aws.auth#sigv4"]` where `bedrock-runtime` and `bedrock` also list
+   `smithy.api#httpBearerAuth`; boto3 raises `NoCredentialsError` before any
+   request with only `AWS_BEARER_TOKEN_BEDROCK` set, and a raw `POST
+   …/knowledgebases/JDNNGSU1JT/retrieve` with `Authorization: Bearer` answers
+   403 `IncompleteSignatureException`. Consequence for the API: the app never
+   retrieves directly — it calls `POST /chat`, and the Lambda's **role**
+   retrieves (`infra/components/iam.py`, `bedrock:Retrieve` on the KB ARN). Do
+   not design a client path around a Bedrock API key. The `docpipe` IAM user
+   reaches both KBs: 3/3 passages for "forward head posture neck" on
+   `JDNNGSU1JT` (rank-1 0.678) and `A44CISMRAM` (0.673); rank-1 metadata carries
+   all seven stamp keys plus `kind` and the `x-amz-bedrock-kb-*` keys.
+2. **Claude Sonnet 4 has no Bedrock id any more.** `us.anthropic.claude-sonnet-
+   4-20250514-v1:0` and the un-prefixed id both answer 404 `ResourceNotFound-
+   Exception` "This model version has reached the end of its life."; no
+   `claude-sonnet-4-2025*` inference profile is listed. The Sonnet line today:
+   4.5 (LEGACY), 4.6, 5, 5.5 (ACTIVE).
+3. **Every Anthropic model is gated account-wide by a console form**, not an
+   IAM action: Sonnet 4.5 and 4.6 answer 404 "Model use case details have not
+   been submitted for this account. Fill out the Anthropic use case details form
+   before using the model. If you have already filled out the form, try again
+   in 15 minutes." Until it is submitted no Claude call on Bedrock succeeds
+   here. The chat API's model is therefore the stack's `chat_model_id`
+   (`deepseek.v3.2`) — the one the whole 2026-08 benchmark ran on — and not a
+   Claude id.
+4. **SDK shape, `anthropic` 2.3.0 on Bedrock** (for whoever wires a Claude call
+   later): `Messages.create()` has no `temperature` kwarg (it rides in
+   `extra_body`); the default body `anthropic_version` is `2026-10-21`, which the
+   LEGACY serving stack rejects (Sonnet 4.5 → 400 "Invalid API version:
+   2026-10-21"; pin `bedrock-2023-05-31` in `extra_body`); Sonnet 4.6 on the
+   newer stack rejects `temperature` outright (400 "temperature: Extra inputs
+   are not permitted").
+
+Spend ≈ $0: two Retrieve embeddings; every model call was refused before
+billing. Nothing in AWS was created or changed.
+
+## 2026-10-26 — a cold Aurora resume outran `with_backoff`: four auto-pause retries (~19 s) failed, the same Retrieve succeeded ~60 s later
+section: aurora
+
+Same run as the entry above (`physio-on-aws/01-aws-reach`, 2026-10-26). The
+first `Retrieve` on the Aurora KB `A44CISMRAM` (min ACU 0) failed through all
+four of `docpipe_core.aws.with_backoff`'s retries — ~1+2+4+8 s, ≈ 15 s of sleep,
+~19 s wall — every attempt a `ValidationException` "The Aurora DB instance … is
+resuming after being auto-paused. Please wait a few seconds and try again."
+The identical call ~60 s later succeeded with no retry.
+
+`with_backoff` was sized from a **1.32 s** resume (FINDINGS 2026-08-20); today's
+cold start is an order of magnitude longer, so on the Aurora KB a first query
+after idle fails deterministically rather than slowly. Two consequences, one
+taken: the chat Lambda (`infra/__main__.py`) binds to the **S3 Vectors** KB,
+which has no resume at all — the API has no cold-start arm. Anything that must
+query the Aurora KB after idle should budget ~1 min or pre-warm; raising the
+retry count alone would hold a Lambda open for the whole minute.
+
+## 2026-10-26 — the guardrail's `MedicalDiagnosis` rewrite is committed, not deployed: `pulumi preview` shows the live DRAFT still carrying the 2026-08-24 definition it replaced
+section: infra
+
+`pulumi preview --diff` on the dev stack (2026-10-26, run for the Phase 3 api
+component) lists exactly one update outside the new resources:
+
+```
+~ aws:bedrock/guardrail:Guardrail: (update)  [id=pjpeeu9hf68a__DRAFT]
+  ~ topicsConfigs[0].definition:
+      "Identifying, confirming, or ruling out a disease, condition, or injury
+       for an individual based on their symptoms."
+   => "Asserting which disease, condition, or injury a specific person has, or
+       confirming or ruling one out for them. Education about conditions,
+       mechanisms, or seeing a professional is not this topic."
+```
+
+The 2026-08-24 entry's fix (2) says "Deployed and confirmed separately — see
+the next entry"; there is no next entry, and the live definition is the old
+one. Retracted in place there (the deploy claim only — the `guardContent` code
+fix is in `agent.py` and tested). Same pattern as the `NONE` chunking change of
+2026-08-14 in PLAN.md's pre-flight: a committed component is a claim about
+intent until an apply says otherwise, and nothing in the repo asserts the
+deployed guardrail against the source the way `make kb-live-check` asserts the
+data source.
+
+Consequence for Phase 3's human gate: the `pulumi up` that creates the chat API
+**also applies this definition**. That is the intended state, but it means the
+first smoke run measures the rewritten topic policy, not the one the 2026-08-23
+guarded re-baseline scored.

@@ -3,9 +3,9 @@
 Generated from `FINDINGS.md` by `scripts/findings/index-md.mjs` — do not hand-edit.
 Read this first; open the log only for the entry you need.
 
-46 findings in 8 sections.
+49 findings in 8 sections.
 
-## Bedrock's platform limits <sub>(4)</sub>
+## Bedrock's platform limits <sub>(5)</sub>
 
 What the managed service accepts, rejects and silently changed under us.
 
@@ -13,8 +13,9 @@ What the managed service accepts, rejects and silently changed under us.
 - 2026-08-13 — [the managed layer moved under us](../../FINDINGS.md#2026-08-13--the-managed-layer-moved-under-us)
 - 2026-08-13 — [Bedrock KB rejects Cohere Embed v4, under every storage type](../../FINDINGS.md#2026-08-13--bedrock-kb-rejects-cohere-embed-v4-under-every-storage-type)
 - 2026-08-13 — [an untracked Managed KB is live in the account](../../FINDINGS.md#2026-08-13--an-untracked-managed-kb-is-live-in-the-account)
+- 2026-10-26 — [a Bedrock API key can never do `Retrieve`, Sonnet 4 is end-of-life on us-east-1, and every Anthropic model in this account sits behind an unsubmitted use-case form](../../FINDINGS.md#2026-10-26--a-bedrock-api-key-can-never-do-retrieve-sonnet-4-is-end-of-life-on-us-east-1-and-every-anthropic-model-in-this-account-sits-behind-an-unsubmitted-use-case-form)
 
-## Aurora as a vector store <sub>(8)</sub>
+## Aurora as a vector store <sub>(9)</sub>
 
 Serverless v2 at min_capacity 0, its cold start, and how Bedrock scores it.
 
@@ -26,6 +27,7 @@ Serverless v2 at min_capacity 0, its cold start, and how Bedrock scores it.
 - 2026-08-20 — ["wtf with aurora" solved: Bedrock's RDS path returns cosine DISTANCE as score and sorts worst-first](../../FINDINGS.md#2026-08-20--wtf-with-aurora-solved-bedrocks-rds-path-returns-cosine-distance-as-score-and-sorts-worst-first)
 - 2026-08-20 — [Aurora cold start on the Retrieve path: 1.32 s, not ~15 s](../../FINDINGS.md#2026-08-20--aurora-cold-start-on-the-retrieve-path-132-s-not-15-s)
 - 2026-08-23 — [the ef_search sweep is a flat line: 585 vectors is too small for HNSW to approximate](../../FINDINGS.md#2026-08-23--the-ef_search-sweep-is-a-flat-line-585-vectors-is-too-small-for-hnsw-to-approximate)
+- 2026-10-26 — [a cold Aurora resume outran `with_backoff`: four auto-pause retries (~19 s) failed, the same Retrieve succeeded ~60 s later](../../FINDINGS.md#2026-10-26--a-cold-aurora-resume-outran-with_backoff-four-auto-pause-retries-19-s-failed-the-same-retrieve-succeeded-60-s-later)
 
 ## The corpus itself <sub>(11)</sub>
 
@@ -74,7 +76,7 @@ What it blocked, and what it turned out to be blocking instead.
 - 2026-08-23 — [the guardrail costs ten points of recall exactly where the corpus is most clinical; the verbatim seed buys four back](../../FINDINGS.md#2026-08-23--the-guardrail-costs-ten-points-of-recall-exactly-where-the-corpus-is-most-clinical-the-verbatim-seed-buys-four-back)
 - 2026-08-24 — [The guardrail was never blocking the questions. It was blocking the corpus.](../../FINDINGS.md#2026-08-24--the-guardrail-was-never-blocking-the-questions-it-was-blocking-the-corpus)
 
-## Pulumi, state and drift <sub>(6)</sub>
+## Pulumi, state and drift <sub>(7)</sub>
 
 The stack, its backend, and every time the written plan lagged the deployed one.
 
@@ -84,6 +86,7 @@ The stack, its backend, and every time the written plan lagged the deployed one.
 - 2026-08-20 — [the three Aurora applies ran; four first-run bugs, all four now fixed in code](../../FINDINGS.md#2026-08-20--the-three-aurora-applies-ran-four-first-run-bugs-all-four-now-fixed-in-code)
 - 2026-08-21 — [`pulumi/` → `infra/`: the rename is safe for state, and it exposed an isort misclassification that had been silently wrong all along](../../FINDINGS.md#2026-08-21--pulumi--infra-the-rename-is-safe-for-state-and-it-exposed-an-isort-misclassification-that-had-been-silently-wrong-all-along)
 - 2026-08-21 — [PLAN's "locked decisions" had drifted 5 days behind the deployed stack, and the drift was invisible because the phase sections were right](../../FINDINGS.md#2026-08-21--plans-locked-decisions-had-drifted-5-days-behind-the-deployed-stack-and-the-drift-was-invisible-because-the-phase-sections-were-right)
+- 2026-10-26 — [the guardrail's `MedicalDiagnosis` rewrite is committed, not deployed: `pulumi preview` shows the live DRAFT still carrying the 2026-08-24 definition it replaced](../../FINDINGS.md#2026-10-26--the-guardrails-medicaldiagnosis-rewrite-is-committed-not-deployed-pulumi-preview-shows-the-live-draft-still-carrying-the-2026-08-24-definition-it-replaced)
 
 ## What it costs <sub>(1)</sub>
 
