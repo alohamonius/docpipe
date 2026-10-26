@@ -82,8 +82,12 @@ def main() -> int:
         if args.limit:
             qs = qs[: args.limit]
         probes = [
-            {"id": q.id, "stratum": q.stratum, "question_class": q.question_class,
-             "text": q.question}
+            {
+                "id": q.id,
+                "stratum": q.stratum,
+                "question_class": q.question_class,
+                "text": q.question,
+            }
             for q in qs
         ]
 
