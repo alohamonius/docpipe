@@ -389,22 +389,44 @@ in order:
       `safety_critical` from the sidecars, plus a `.citation` string; optional
       `retrieve(min_evidence=…)` pushes an evidence floor into the vector store.
       Defaults to unfiltered — the caller decides.
-- [ ] **Agent core**: Strands Agents SDK agent on `deepseek.v3.2` — tools:
-      `search_kb` (KB retrieve), conversation history; non-diagnostic health
-      system prompt; citations required for KB-sourced claims
-- [ ] `services/api`: handlers for `POST /chat` (runs the agent, conversation
-      persisted per user), `POST /summarize`, `GET /jobs/{id}` using core
-- [ ] `ConversationStore` in core (DynamoDB, PK userId SK conversationId, TTL)
-- [ ] Auth + rate limiting (**locked design** — no Cognito): **REST API Gateway**
-      + **API key + usage plan** (rate/burst + **daily quota** = hard Bedrock cost
-      cap; health.studio holds the key), opaque `userId` required on every route,
-      plus a **per-user token-bucket in DynamoDB** in the Lambda (usage plans
-      throttle per-key, not per-user). End-user login is Auth.js/Google in the
-      app; the browser never calls docpipe, so the app-asserted `userId` is safe.
-- [ ] Packaging: zip build via uv export → CI artifact
-- [ ] `api-lambda` module: **REST API Gateway** (needed for usage-plan quotas),
-      routes, Lambda, log group, method throttling
-- [ ] Smoke test script hitting the deployed endpoint
+- [x] **Agent core** — shipped as **`KbAgent`** (`docpipe_core.agent`: the
+      Converse tool loop with `search_kb`, prior turns via `ask(history=…)`,
+      the guardrail on every call), **not Strands**. Decided 2026-10-26
+      (physio-on-aws/04): every measured number behind this endpoint is
+      KbAgent's, and a framework loop would not `guardContent`-tag only the
+      question (the 2026-08-24 fix). Non-diagnostic system prompt plus the
+      "Not covered by the knowledge base" opener in `docpipe_core.chat.CHAT_SYSTEM`;
+      citations are the retrieved passages with the five stamp fields.
+- [x] `services/api`: `POST /chat` — `services/api/chat.py` → `ChatService`
+      (`docpipe_core.chat`): 400 malformed, 502 model error with the
+      conversation unchanged, 200 with citations. 2026-10-26, tested.
+- [ ] `services/api`: `POST /summarize`, `GET /jobs/{id}` — not in 04's scope.
+- [x] `ConversationStore` in core (`docpipe_core.conversations`: DynamoDB, PK
+      userId SK conversationId, sliding TTL on `expiresAt`; moto-tested, and a
+      contract test reads `infra/components/data.py` for the key names). 2026-10-26.
+- [x] Auth + rate limiting (**locked design** — no Cognito): **REST API Gateway**
+      + **API key + usage plan** (5 rps / 10 burst, **500/day** quota = hard
+      Bedrock cost cap; health.studio holds the key), opaque `userId` required —
+      `infra/components/api.py`, **committed 2026-10-26, not applied**. End-user
+      login is Auth.js/Google in the app; the browser never calls docpipe, so the
+      app-asserted `userId` is safe.
+- [ ] The **per-user token-bucket in DynamoDB** inside the Lambda (usage plans
+      throttle per key, not per user) — not built; the per-key quota is the only
+      cap today.
+- [x] Packaging: `make lambda-zip` — `uv export` (locked, no dev) + wheels for
+      `aarch64-manylinux2014` + `docpipe_core` + `chat.py` → `build/lambda.zip`
+      (18 MB; `test_lambda_packaging_contract.py` ties it to the component). 2026-10-26.
+- [ ] …as a CI artifact — the target is local only; CI still lints without AWS.
+- [x] `api` component (`infra/components/api.py`): **REST API Gateway**, `/chat`
+      POST (AWS_PROXY, key required), Lambda (arm64, 29 s, JSON logs, 14-day
+      group), stage `dev` with method throttling, usage plan + key; exports
+      `chat_api_url`, `chat_api_key_id` (never the value). `pulumi preview`
+      2026-10-26: **14 to create, 1 to update (the guardrail definition — see
+      FINDINGS), 62 unchanged. Not applied** — the human's `pulumi up`.
+- [x] Smoke test script — `scripts/chat_smoke.py` (two turns on a synthetic
+      user, an out-of-corpus question asserting the "not covered" opener,
+      refuses a non-synthetic id; its checks are unit-tested). Written
+      2026-10-26; **not yet run** — it needs the deployed URL and key.
 
 ### Safety & audit (must exist before the first real Bedrock invoke)
 
@@ -416,8 +438,10 @@ in order:
       (`aws_bedrock_model_invocation_logging_configuration`): every
       prompt/response → S3 (SSE, bedrock-scoped bucket policy) + CloudWatch
       (retention-capped, via a Bedrock-assumed role).
-- [ ] Wire `guardrail_id`/`version` into the `ChatClient`/`SummarizerClient`
-      Converse calls (`docpipe-core`) — Phase 3, when the handlers are built.
+- [x] Wire `guardrail_id`/`version` into the Converse calls: `ChatClient` and
+      `KbAgent` take them, and the chat Lambda passes the stack's
+      (`ChatService.from_env` ← `GUARDRAIL_ID`/`GUARDRAIL_VERSION`). 2026-10-26.
+      `SummarizerClient`'s caller is the Phase 5 worker.
 
 ## Phase 4 — health.studio integration (chat live end-to-end)
 
