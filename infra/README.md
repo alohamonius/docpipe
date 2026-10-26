@@ -11,6 +11,7 @@ concern in `components/`, wired in `__main__.py`.
 | `kb`      | KB source bucket, **S3 Vectors** store, Bedrock Knowledge Base (Titan v2, 1024-dim pinned) |
 | `iam`     | API Lambda role + standalone worker policy (least-privilege) |
 | `safety`  | Bedrock guardrail (no diagnosis/prescription, PII-anonymize, grounding) + model invocation logging → S3/CloudWatch |
+| `api`     | **Phase 3's front door** (`enableChatApi`): Lambda (`chat.handler`, arm64, 29 s) + **REST** API Gateway `POST /chat` + usage plan (daily quota) + API key; exports `chat_api_url`, `chat_api_key_id` — never the key's value |
 
 ## Prerequisites
 
@@ -29,13 +30,16 @@ pulumi login "s3://docpipe-tfstate-<ACCOUNT_ID>/pulumi?region=us-east-1&awssdk=v
 export PULUMI_CONFIG_PASSPHRASE=""   # no secrets in config yet; set a real one before adding any
 ```
 
-(Reuses the existing state bucket under a `pulumi/` prefix. Substitute your own
-AWS account id for `<ACCOUNT_ID>`.)
+(Reuses the existing state bucket under a `pulumi/` **S3 key prefix** — that is
+a path inside the bucket, unrelated to this directory, and renaming the
+directory did not move it. Substitute your own AWS account id for
+`<ACCOUNT_ID>`.)
 
 ## Commands
 
 ```bash
-cd pulumi
+make lambda-zip                  # build/lambda.zip — the api component refuses to preview without it
+cd infra
 pulumi stack init dev            # first time only
 pulumi preview                   # dry run — VERIFY here first (see note below)
 pulumi up                        # create/update
@@ -61,16 +65,28 @@ nested config is still worth doing on the first run.
 
 ## Config (`Pulumi.dev.yaml`)
 
-| Key | Default | Meaning |
-|-----|---------|---------|
-| `aws:region` | `us-east-1` | region |
-| `aws:profile` | `docpipe` | local profile (unset in CI) |
-| `docpipe:namePrefix` | `docpipe-dev` | resource name prefix |
-| `docpipe:enableAurora` | `false` | Phase 5b pgvector benchmark cluster |
-| `docpipe:bedrockModelId` | `us.deepseek.r1-v1:0` | chat inference profile |
+"Default" is what `__main__.py` falls back to when the key is absent; "dev
+stack" is what `Pulumi.dev.yaml` actually sets today. They differ on Aurora —
+the cluster is opt-in by default and the dev stack has opted in.
 
-## Retiring Terraform
+| Key | Default | dev stack | Meaning |
+|-----|---------|-----------|---------|
+| `aws:region` | — | `us-east-1` | region |
+| `aws:profile` | — | `docpipe` | local profile (unset in CI) |
+| `docpipe:namePrefix` | `docpipe-dev` | `docpipe-dev` | resource name prefix |
+| `docpipe:enableAurora` | `false` | **`true`** | pgvector cluster + Data API + `bedrock_user` secret |
+| `docpipe:enableAuroraKb` | `false` | **`true`** | attaches the second KB. Requires `enableAurora` **and** a prior `aurora_bootstrap.py` run — `__main__.py:63` raises on the first, nothing catches the second |
+| `docpipe:bedrockModelId` | `us.deepseek.r1-v1:0` | same | **summary** model (R1 — INFERENCE_PROFILE-only, no tool use) |
+| `docpipe:chatModelId` | `deepseek.v3.2` | same | **chat/agent** model (ON_DEMAND, tool use) |
+| `docpipe:enableChatApi` | `false` | **`true`** | the `api` component. Needs `build/lambda.zip` (`make lambda-zip`) at preview time; `__main__.py` refuses without it |
 
-Once `pulumi up` succeeds, the old `infra/` (Terraform) directory is dead and
-should be removed (`git rm -r infra/`). Until then it stays as the reference the
-components were translated from.
+## Terraform, retired
+
+Done. The Terraform tree — which occupied this same `infra/` path — was deleted
+in `825aa4b` once `pulumi up` succeeded. This directory was `pulumi/` until
+2026-08-21, when it took the `infra/` name back so that all four top-level
+directories are named for their role rather than their tool.
+
+The one thing to keep straight when reading history: **`infra/` before
+2026-08-21 means Terraform, after it means Pulumi.** `git log --follow` on any
+file here traverses the rename.

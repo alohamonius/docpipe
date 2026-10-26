@@ -38,20 +38,33 @@ from __future__ import annotations
 
 import random
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
 from pydantic import BaseModel
 
+from docpipe_core.aws import is_retryable
 from docpipe_core.llm import HEALTH_ASSISTANT_SYSTEM, extract_answer_text
+from docpipe_core.models import ChatMessage
 from docpipe_core.retrieval import KnowledgeBaseClient, RetrievedPassage
 
 DEFAULT_AGENT_MODEL_ID = "deepseek.v3.2"  # ON_DEMAND + tool use; R1 has neither
 DEFAULT_MAX_ITERATIONS = 5
 
 SEARCH_TOOL_NAME = "search_kb"
+
+# The seeded first call's toolUseId. Client-chosen ids are legal in Converse
+# history — the API only requires every toolUse to be answered by a matching
+# toolResult, which the seed pair satisfies.
+VERBATIM_SEED_TOOL_USE_ID = "verbatim-seed"
+
+_VERBATIM_SEED_SYSTEM_NOTE = (
+    " The knowledge base has already been searched with the user's question "
+    "verbatim (the first tool call above); search again only with reformulated "
+    "or narrowed queries."
+)
 
 # The one-line min_evidence hint is load-bearing: the 2026-08-18 run showed the
 # model setting the floor on every call from nothing but this sentence.
@@ -80,17 +93,6 @@ _TOOL_CONFIG: dict[str, Any] = {
     ]
 }
 
-_RETRYABLE_CODES = frozenset(
-    {"ThrottlingException", "ServiceUnavailableException", "ModelNotReadyException"}
-)
-
-
-def _is_retryable(error: ClientError) -> bool:
-    code = error.response.get("Error", {}).get("Code", "")
-    if code in _RETRYABLE_CODES:
-        return True
-    return code == "ValidationException" and "resuming after being auto-paused" in str(error)
-
 
 class ToolCall(BaseModel):
     """One ``search_kb`` invocation the model chose to make."""
@@ -115,6 +117,17 @@ class AgentSession(BaseModel):
         """True when the loop ended on our bound, not the model's ``end_turn``."""
         return self.stop_reason == "tool_use"
 
+    @property
+    def guardrail_intervened(self) -> bool:
+        """True when the guardrail replaced the answer with its own refusal.
+
+        Derived from ``stop_reason`` rather than stored, so it cannot drift out
+        of step with it. A caller that logs or scores answers needs to tell a
+        refusal apart from a reply — they are both non-empty strings, and the
+        guardrail's text reads like a perfectly ordinary answer.
+        """
+        return self.stop_reason == "guardrail_intervened"
+
 
 class KbAgent:
     """A knowledge-base-grounded agent: one tool, model-driven retrieval."""
@@ -131,6 +144,9 @@ class KbAgent:
         search_type: str | None = None,
         max_tokens: int = 1024,
         temperature: float = 0.3,
+        guardrail_id: str | None = None,
+        guardrail_version: str = "DRAFT",
+        verbatim_first: bool = False,
         max_retries: int = 4,
         sleep: Callable[[float], None] = time.sleep,
         rng: Callable[[], float] = random.random,
@@ -141,12 +157,17 @@ class KbAgent:
         self.max_iterations = max_iterations
         self.top_k = top_k
         self.search_type = search_type
+        self.verbatim_first = verbatim_first
         # Any on purpose: tests inject fakes, and the boto3-stubs TypedDicts
         # would force every literal below into casts for no runtime gain.
         self._bedrock: Any = bedrock_client or boto3.client("bedrock-runtime")
         self._system = system + " Use the search_kb tool for facts."
+        if verbatim_first:
+            self._system += _VERBATIM_SEED_SYSTEM_NOTE
         self._max_tokens = max_tokens
         self._temperature = temperature
+        self._guardrail_id = guardrail_id
+        self._guardrail_version = guardrail_version
         self._max_retries = max_retries
         self._sleep = sleep
         self._rng = rng
@@ -158,10 +179,125 @@ class KbAgent:
             try:
                 return call()
             except ClientError as error:
-                if not _is_retryable(error) or attempt == self._max_retries:
+                if not is_retryable(error) or attempt == self._max_retries:
                     raise
                 self._sleep(2**attempt + self._rng())
         raise RuntimeError("unreachable")
+
+    def _guardrail_kwargs(self) -> dict[str, Any]:
+        """``guardrailConfig``, or nothing when no guardrail is configured.
+
+        A provisioned guardrail enforces nothing on its own — it applies only to
+        calls that name it. `llm.py` has passed this since the guardrail was
+        built; this loop did not, so **the agentic path — the best-performing
+        path, and the one a chat would ship — ran unguarded from the day it was
+        written until 2026-08-23.** The non-diagnostic stance rested entirely on
+        a system prompt, which prompt injection is free to argue with.
+
+        Applied on EVERY iteration, not just the last. The model can emit text
+        on a tool-use turn, and an intervention has to be able to stop the loop
+        before another retrieval round, not after the final answer is composed.
+
+        The question of whether to ``guardContent``-tag got its measured
+        answer on 2026-08-24 (scripts/guardrail_probe.py): untagged, every
+        toolResult turn re-enters the *input* assessment, and the corpus's own
+        text is what trips it — the referral chunk via the MedicalDiagnosis
+        topic, a mechanism chunk via PROMPT_ATTACK at LOW confidence — while
+        the bare questions almost never do (3/66, deterministic). So
+        ``_question_block`` tags the user's question; see its docstring. The
+        role needs `bedrock:ApplyGuardrail`.
+        """
+        if not self._guardrail_id:
+            return {}
+        return {
+            "guardrailConfig": {
+                "guardrailIdentifier": self._guardrail_id,
+                "guardrailVersion": self._guardrail_version,
+            }
+        }
+
+    def _question_block(self, question: str) -> dict[str, Any]:
+        """The user's question — ``guardContent``-tagged when a guardrail is on.
+
+        Converse semantics: with no ``guardContent`` block in the request, the
+        guardrail input-assesses ALL user content — which, in a tool loop,
+        includes every retrieved passage riding back in a toolResult turn.
+        Measured 2026-08-24: that is where the blocking actually came from.
+        The 2026-08-23 re-baseline's stochastic 31/61 ever-blocked pool was a
+        lottery over *what got retrieved*, not over the questions — bare
+        questions block 3/66 and deterministically. With this tag present the
+        guardrail input-assesses only the question; model output is still
+        assessed on every iteration, so the topic policy still applies to what
+        the assistant actually says.
+
+        Plain text when no guardrail is configured — ``guardContent`` without a
+        ``guardrailConfig`` is a validation error.
+        """
+        if not self._guardrail_id:
+            return {"text": question}
+        return {"guardContent": {"text": {"text": question}}}
+
+    def _seed_verbatim_search(
+        self,
+        question: str,
+        messages: list[dict[str, Any]],
+        tool_calls: list[ToolCall],
+    ) -> None:
+        """Make tool call 1 the user's question verbatim, before the model runs.
+
+        Why (FINDINGS six-run entry, 2026-08-20): single-shot ∪ agentic covered
+        61/61 answerable questions while neither strategy alone did — the
+        model's reformulations sometimes lose exactly what embedding the
+        verbatim question finds. Prompting the model to search verbatim first
+        would leave that to compliance; seeding the call makes it a protocol
+        fact. The seed rides into history as an ordinary toolUse/toolResult
+        pair, counts as a session tool call for scoring, and the system prompt
+        tells the model it already happened so it reformulates instead of
+        repeating.
+
+        One semantic this changes on the guarded path: the seed retrieval runs
+        *before* any Converse call, so a question the guardrail would block at
+        input still performs one retrieval. That is deliberate — the eval
+        measures retrieval reach — but a shipped flow that must not retrieve
+        for blocked inputs would need the guardrail consulted first.
+        """
+        passages = self._with_backoff(
+            lambda: self.kb.retrieve(
+                question,
+                top_k=self.top_k,
+                min_evidence=None,
+                rerank=False,
+                search_type=self.search_type,
+            )
+        )
+        tool_calls.append(ToolCall(query=question, min_evidence=None, passages=passages))
+        messages.append(
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "toolUse": {
+                            "toolUseId": VERBATIM_SEED_TOOL_USE_ID,
+                            "name": SEARCH_TOOL_NAME,
+                            "input": {"query": question},
+                        }
+                    }
+                ],
+            }
+        )
+        messages.append(
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "toolResult": {
+                            "toolUseId": VERBATIM_SEED_TOOL_USE_ID,
+                            "content": [{"text": self._render(passages)}],
+                        }
+                    }
+                ],
+            }
+        )
 
     def _render(self, passages: list[RetrievedPassage]) -> str:
         """What the model reads back. 600 chars/passage: enough to ground an
@@ -171,13 +307,47 @@ class KbAgent:
             return "No passages found."
         return "\n\n".join(f"[{p.citation}]\n{p.text[:600]}" for p in passages)
 
-    def ask(self, question: str) -> AgentSession:
-        messages: list[dict[str, Any]] = [{"role": "user", "content": [{"text": question}]}]
+    @staticmethod
+    def _history_messages(history: Sequence[ChatMessage]) -> list[dict[str, Any]]:
+        """Prior turns as plain Converse messages, replayed before the question.
+
+        Plain ``text`` blocks, never ``guardContent``: with a guardrail on, only
+        tagged content is input-assessed, and every prior user turn was assessed
+        when it was asked. Tagging them again would re-run the input policy over
+        the whole transcript on every turn — the toolResult problem of 2026-08-24
+        in a new coat.
+
+        Converse requires strictly alternating roles, and the new question is the
+        user turn — so the history must end on the assistant. The store writes
+        turns in (user, assistant) pairs, which keeps this true by construction;
+        the check is for everyone else.
+        """
+        if history and history[-1].role != "assistant":
+            raise ValueError(
+                "history must end with an assistant turn — the question is the next user turn"
+            )
+        return [{"role": m.role, "content": [{"text": m.content}]} for m in history]
+
+    def ask(self, question: str, *, history: Sequence[ChatMessage] = ()) -> AgentSession:
+        """One question, optionally after prior turns (``history``), driven to an answer.
+
+        ``history`` is what makes this a chat rather than a question box: the
+        Lambda behind ``POST /chat`` loads the conversation and replays it here.
+        The verbatim seed, when on, still searches the *question* — the history
+        is context for the model, not a query.
+        """
+        messages: list[dict[str, Any]] = [
+            *self._history_messages(history),
+            {"role": "user", "content": [self._question_block(question)]},
+        ]
         tool_calls: list[ToolCall] = []
         tokens_in = tokens_out = 0
         stop: str | None = None
         answer = ""
         started = self._clock()
+
+        if self.verbatim_first:
+            self._seed_verbatim_search(question, messages, tool_calls)
 
         for _ in range(self.max_iterations):
             response = self._with_backoff(
@@ -190,16 +360,21 @@ class KbAgent:
                         "maxTokens": self._max_tokens,
                         "temperature": self._temperature,
                     },
+                    **self._guardrail_kwargs(),
                 )
             )
             usage = response.get("usage", {})
             tokens_in += usage.get("inputTokens", 0)
             tokens_out += usage.get("outputTokens", 0)
             stop = response.get("stopReason")
-            output_message = response["output"]["message"]
+            # `output.message` is read only once we know we are continuing.
+            # A guardrail intervention is a stop reason this loop never saw
+            # before, and indexing into a response shape we have not observed
+            # would turn a refusal — the safe outcome — into a KeyError.
             if stop != "tool_use":
                 answer = extract_answer_text(response)
                 break
+            output_message = response["output"]["message"]
 
             messages.append({"role": "assistant", "content": output_message["content"]})
             tool_results: list[dict[str, Any]] = []

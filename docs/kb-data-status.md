@@ -1,7 +1,17 @@
 # Knowledge base — data status
 
-> **Partly superseded, 2026-08-16.** Read `INGEST-RUNBOOK.md` first for current
-> state and the sequence. What changed here since this was written:
+> **Partly superseded, 2026-08-16; corpus figures superseded 2026-08-19.** Read
+> `INGEST-RUNBOOK.md` first for current state and the sequence.
+>
+> - **Every `383` below is stale — the corpus is now 496 chunks** (2026-08-19
+>   heading split: 41 parents → 154 pieces, and 72 standalone `### Sources`
+>   chunks minted). The per-chunk counts here (`160 of 383`, `172 of 383`, the
+>   histograms) are **left as measured** — they are a point-in-time analysis of
+>   the 383-chunk corpus, and rewriting the numerators would falsify it. Read
+>   them as ratios, not current inventory. FINDINGS.md 2026-08-19 has the
+>   current shape.
+>
+> What changed here since this was written:
 >
 > - **The blocker below was half the blocker.** `NONE` chunking is necessary and
 >   not sufficient — the S3 Vectors index also declares nothing non-filterable,

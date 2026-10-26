@@ -20,9 +20,9 @@ from __future__ import annotations
 
 import json
 
+import pulumi
 import pulumi_aws as aws
 
-import pulumi
 from components.s3vectors import S3VectorsIndex
 
 

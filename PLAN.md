@@ -40,25 +40,51 @@ content) via Bedrock Knowledge Bases, with citations.
   type (measured, FINDINGS.md), and the only other supported family — Cohere
   Embed v3 — caps input at 512 tokens against a corpus at p90 ≈ 2,200 tokens.
   Titan v2's 8,192 is the only fit. Do not reopen without re-measuring.
-- **Vector store = Aurora PostgreSQL + pgvector as *intended* primary; S3 Vectors
-  retained as a second KB over the same source bucket.** `min_capacity = 0` **is**
-  supported by Bedrock KB (ACU 0–16), so scale-to-zero survives; the ~15s resume
-  is accepted and hidden by pre-warming on chat-UI open. Two KBs make Phase 5b a
-  config flip (`retrieval.py` already takes `knowledge_base_id`) and double as a
-  rollback path. S3 Vectors idles at ~$0, so keeping it costs nothing.
-  **Build status: not built.** Only the S3 Vectors KB exists today; the dev stack
-  sets `enableAurora: "false"` (`pulumi/Pulumi.dev.yaml:8`) and flipping it to
-  true still would not produce a KB-attachable cluster — see the five gaps in
-  Phase 2. "Primary" is the target, not the deployed state.
-  **Deferred 2026-08-16 (the human's): shipping on S3 Vectors alone; Aurora
-  and the benchmark move behind shipping — see Current priority.**
-- **KB corpus = `health.studio/build/kb/`**, produced by `pnpm kb:build` — **383
-  chunk-final files + 383 `.metadata.json` sidecars** (192 prose from 20 docs,
-  191 graph; 1,686,867 B). **Not `docs/`**: that tree holds files health.studio's
-  corpus policy excludes, one of them for a safety reason. Because the corpus is
-  chunk-final, the data source runs `chunkingStrategy: NONE` — see FINDINGS.md.
+- **Vector store = two Bedrock KBs over one source bucket — Aurora PostgreSQL +
+  pgvector and S3 Vectors — differing only in the STORAGE slot.**
+  `min_capacity = 0` **is** supported by Bedrock KB (ACU 0–16), so scale-to-zero
+  survives. Two KBs make Phase 5b a config flip (`retrieval.py` already takes
+  `knowledge_base_id`) and double as a rollback path. S3 Vectors idles at ~$0,
+  so keeping it costs nothing.
+  **Build status: BOTH BUILT AND INGESTED (2026-08-20).** The dev stack sets
+  `enableAurora: "true"` and `enableAuroraKb: "true"`
+  (`infra/Pulumi.dev.yaml:17-18`). Live and verified 2026-08-21: cluster
+  `docpipe-dev-aurora` **available**, engine 16.14, min 0 / max 1 ACU, Data API
+  enabled; Aurora KB **`A44CISMRAM`** (ds `H8PN3JBXPN`) and S3 Vectors KB
+  **`JDNNGSU1JT`** (ds `U0PM4HIXGE`), both holding the same **585**-chunk corpus
+  (reingested 2026-08-22; vector counts verified directly, not trusted from a
+  job status — S3 Vectors 585 vectors, Aurora 585 rows / 585 embeddings).
+  The ~15s resume this entry used to assume was **measured at 1.32 s** on the
+  Retrieve path (FINDINGS 2026-08-20) — pre-warming on chat-UI open is
+  therefore not needed to hide it.
+  **Which store is primary is now an open question, not a locked decision** —
+  the benchmark it was waiting on came back with the store effect near zero
+  (recall 0.7879 identical; MRR 0.5634 S3 vs 0.5646 Aurora after the
+  score-inversion fix), Aurora ~2× faster warm (p50 0.523 s vs 0.960 s), and
+  the $ column plus the `hnsw.ef_search` sweep still outstanding. See Phase 5b.
+  **The 2026-08-16 deferral is spent: Aurora and the benchmark were built
+  anyway on 2026-08-20 — see Current priority.**
+- **KB corpus = `health.studio/build/kb/`**, produced by `pnpm kb:build` — **585
+  chunk-final files + sidecars** (192 prose from 20 docs, 393 graph). Was 383,
+  then 496 at the 2026-08-19 heading split, then 579, and **585 after the
+  2026-08-21 Sources peel** — four entrapment chunks had grown past Titan v2's
+  8,192-token cap and were producing NO vector at all; `### Sources` was peeled
+  onto siblings with the parent keys kept, so nothing was retired. `radiocarpal`
+  still sits at 8,172 of 8,192 — the build now warns at 90%. Both KBs hold the
+  byte-identical 585-chunk corpus. **78 are bibliography-only**,
+  tagged `section: "Sources"` in every sidecar, so retrieval can exclude them
+  with a metadata filter today — no rebuild needed. The corpus change measured
+  recall- and rank-neutral on the ratified key (0.7879 either way).
+  **Not `docs/`**: that tree holds files health.studio's corpus policy
+  excludes, one of them for a safety reason. Because the corpus is chunk-final,
+  the data source runs `chunkingStrategy: NONE` — see FINDINGS.md.
 
-## Current priority (set 2026-08-14, the human's)
+## Current priority (set 2026-08-14, the human's) — ⚠️ SUPERSEDED, see the end of this section
+
+> **Read the 2026-08-20/21 block at the bottom first.** Steps 1–3, 5 and most
+> of 6 are done; Aurora is built and ingested and the benchmark has reported.
+> The dated rulings below are kept because they record *why* the order was what
+> it was — they are history, not the current instruction.
 
 **The measured decision is the deliverable, so Phase 5b comes first.** What this
 project is judged on is *"I benchmarked S3 Vectors against Aurora pgvector on the
@@ -90,7 +116,13 @@ Execution order, and what each step is actually blocked on:
    `metadataConfiguration`, so nothing is non-filterable and the 2 KB cap bites).
    Land the consumer half before or with the producer half, never after.
 5. **Aurora** — the five gaps in Phase 2, then a second KB over the same bucket.
+   ✅ **done 2026-08-20** — all five closed, three applies run, KB `A44CISMRAM`
+   ACTIVE, 496/496 ingested (585/585 since 2026-08-22).
 6. **Measure** — recall@k / MRR / p50 / p95 / $, plus the `hnsw.ef_search` sweep.
+   ◐ **mostly done 2026-08-20** — recall, MRR and warm p50/p95 measured on both
+   stores, single-shot and agentic. **Still open: the $ column and the
+   `ef_search` sweep** (which needs a direct-SQL harness — Bedrock issues its
+   own sessions, so the sweep cannot reach the shipped Retrieve path).
 
 > **Order corrected 2026-08-14 (human ruling).** Steps 1–4 were 2–4 then 1: the
 > corpus reshape led, on the argument that it was "free before the first ingest".
@@ -114,6 +146,30 @@ Execution order, and what each step is actually blocked on:
 > without a rebuild. conn-04/chain-03 phrasing fixes are content-side in
 > health.studio, unblocked anytime.
 
+> **Overtaken by events 2026-08-20/21.** The deferral above did not hold: steps
+> 5 and 6 ran anyway. Aurora was built and ingested (496/496) on 2026-08-20 and
+> the benchmark produced the headline numbers — so the ordering question it
+> settled is moot, and this section no longer describes what is being worked on.
+>
+> **What the benchmark actually returned is the reason to re-plan rather than
+> resume:** the store barely matters. Recall is identical across stores
+> (0.7879), MRR within noise (0.5634 S3 / 0.5646 Aurora, and only after finding
+> that Bedrock's RDS path returns cosine *distance* as score sorted
+> worst-first), and every agentic row lands 0.89–0.95 on either store in any
+> search mode. **The retrieval loop is the effect; the store is not.** Aurora's
+> one clear win is warm latency (~2×) and the exhibits only it can produce
+> (`ef_search` sweep, near-duplicate detection).
+>
+> **Therefore the remaining Phase 5b work is not "more benchmark".** What is
+> left that changes an outcome: the **$ cost column**, the **`ef_search`
+> sweep** (needs a direct-SQL harness), and the measured run that FINDINGS'
+> six-run entry pointed at — **verbatim query as tool call 1, then
+> reformulate**, since single-shot ∪ agentic = 61/61 answerable but neither
+> strategy alone reaches it. Then Phase 3, where the agent ships.
+>
+> Still genuinely open and unaffected by any of this: the bibliography move
+> (step 4) and the S3-side reranker/abstention path from the 2026-08-16 ruling.
+
 > **Revised 2026-08-19 (human ruling): Aurora is must-have — unparked.** The
 > 2026-08-16 deferral inverts: the three Aurora applies, `search_type` in
 > `retrieval.py`, sync fan-out to both KBs, and the hybrid/benchmark
@@ -123,6 +179,16 @@ Execution order, and what each step is actually blocked on:
 > compute leans **Lambda** (not locked); the nerve-registry rulings (cutaneous
 > contract, Population B denominator) and coverage priority are resolved in the
 > platform repo, not here. The sources-chunks handling decision stays open.
+
+> **2026-08-23 — Phase 5b close-out.** Everything the 2026-08-20/21 block left
+> open is now measured: the **$ column** (store is 1–3% of marginal cost), the
+> **`ef_search` sweep** (flat at n=585), the **near-dup scan** (304 pairs, all
+> graph registry), the **guarded re-baseline + null controls** (guardrail
+> −10 points, stochastic, on the clinical strata) and the **verbatim-first
+> run** (+4 points, 0.9467). All under Phase 5b below with FINDINGS entries.
+> What the close-out surfaced as new critical-path work: **the DRAFT guardrail
+> blocks the corpus's own question shapes ~⅓ of the time — tune it before
+> Phase 3 ships.** Only the writeup remains.
 
 Phases are deliberately **not renumbered**: FINDINGS.md and `docs/interview/`
 reference them by number. Only the execution order changed.
@@ -159,9 +225,11 @@ tool use, R1 remains the summaries model.)
 
 ## Phase 2 — Infra foundation ✅ (deployed 2026-08-13, Pulumi)
 
-Originally built as Terraform modules, then ported to **Pulumi (Python)** in
-`pulumi/` (one `ComponentResource` per concern + two boto3 dynamic providers
-for pulumi-aws gaps: S3 Vectors, invocation logging). Terraform deleted.
+Originally built as Terraform modules in `infra/`, then ported to **Pulumi
+(Python)** (one `ComponentResource` per concern + two boto3 dynamic providers
+for pulumi-aws gaps: S3 Vectors, invocation logging). Terraform deleted in
+`825aa4b`; the Pulumi tree lived in `pulumi/` until it reclaimed the `infra/`
+name on 2026-08-21 — so `infra/` before that date means Terraform.
 `pulumi up` on the dev stack: **53 resources live** — KB `SJQAFQXPH7`,
 guardrail `pjpeeu9hf68a`, invocation logging active. Gotchas in FINDINGS.md.
 
@@ -192,7 +260,7 @@ guardrail `pjpeeu9hf68a`, invocation logging active. Gotchas in FINDINGS.md.
         master secret. HNSW `ef_construction=256`, GIN `to_tsvector`, GIN
         `custom_metadata`. `hnsw.ef_search` stays a session knob, which is what
         makes the Phase 5b sweep possible without an index rebuild.
-  - [x] **Second KB resource** — `pulumi/components/kb_aurora.py`, over the
+  - [x] **Second KB resource** — `infra/components/kb_aurora.py`, over the
         *same* source bucket, identical Titan v2 @ 1024 FLOAT32, identical
         `chunkingStrategy: NONE`. Held identical on purpose: if these drift the
         benchmark measures the drift instead of the store.
@@ -234,7 +302,7 @@ reversible at zero cost. That stops being true after the first ingest. Do these
 in order:
 
 - [ ] **BLOCKER — deployed config ≠ code.** The `NONE` change in
-      `pulumi/components/kb.py` is now **committed** (`dbc3e8d`) and **asserted
+      `infra/components/kb.py` is now **committed** (`dbc3e8d`) and **asserted
       by a test** (`5430984`, written red first) — but **not applied**.
       **Re-verified 2026-08-14** against the live stack: data source
       `KPAQK6MQY4` is `AVAILABLE`, last updated 2026-08-12 23:02 UTC, and still
@@ -298,8 +366,10 @@ in order:
 - [ ] **Reranker** — `cohere.rerank-v3-5:0` is ON_DEMAND in-account and
       `KnowledgeBaseVectorSearchConfiguration` carries `rerankingConfiguration`.
       Query-time counter to chunk-size dilution; the only quality lever here that
-      needs no rebuild. Billed per query, not per token. Rate unverified — the
-      Price List API carries no rerank SKU.
+      needs no rebuild. Billed per query, not per token. Rate **verified
+      2026-08-23**: $0.002/search unit (1 query ≤ 100 docs) — the Price List
+      API now carries the SKU (`Cohere Rerank v3.5`), and the pricing page
+      agrees; the earlier "no rerank SKU" note is retracted in FINDINGS.
 - [ ] **Hybrid search** — `overrideSearchType: HYBRID|SEMANTIC`. Aurora
       provisions a GIN `to_tsvector` index for exactly this; **unverified whether
       S3 Vectors supports HYBRID at all.**
@@ -319,22 +389,44 @@ in order:
       `safety_critical` from the sidecars, plus a `.citation` string; optional
       `retrieve(min_evidence=…)` pushes an evidence floor into the vector store.
       Defaults to unfiltered — the caller decides.
-- [ ] **Agent core**: Strands Agents SDK agent on `deepseek.v3.2` — tools:
-      `search_kb` (KB retrieve), conversation history; non-diagnostic health
-      system prompt; citations required for KB-sourced claims
-- [ ] `services/api`: handlers for `POST /chat` (runs the agent, conversation
-      persisted per user), `POST /summarize`, `GET /jobs/{id}` using core
-- [ ] `ConversationStore` in core (DynamoDB, PK userId SK conversationId, TTL)
-- [ ] Auth + rate limiting (**locked design** — no Cognito): **REST API Gateway**
-      + **API key + usage plan** (rate/burst + **daily quota** = hard Bedrock cost
-      cap; health.studio holds the key), opaque `userId` required on every route,
-      plus a **per-user token-bucket in DynamoDB** in the Lambda (usage plans
-      throttle per-key, not per-user). End-user login is Auth.js/Google in the
-      app; the browser never calls docpipe, so the app-asserted `userId` is safe.
-- [ ] Packaging: zip build via uv export → CI artifact
-- [ ] `api-lambda` module: **REST API Gateway** (needed for usage-plan quotas),
-      routes, Lambda, log group, method throttling
-- [ ] Smoke test script hitting the deployed endpoint
+- [x] **Agent core** — shipped as **`KbAgent`** (`docpipe_core.agent`: the
+      Converse tool loop with `search_kb`, prior turns via `ask(history=…)`,
+      the guardrail on every call), **not Strands**. Decided 2026-10-26
+      (physio-on-aws/04): every measured number behind this endpoint is
+      KbAgent's, and a framework loop would not `guardContent`-tag only the
+      question (the 2026-08-24 fix). Non-diagnostic system prompt plus the
+      "Not covered by the knowledge base" opener in `docpipe_core.chat.CHAT_SYSTEM`;
+      citations are the retrieved passages with the five stamp fields.
+- [x] `services/api`: `POST /chat` — `services/api/chat.py` → `ChatService`
+      (`docpipe_core.chat`): 400 malformed, 502 model error with the
+      conversation unchanged, 200 with citations. 2026-10-26, tested.
+- [ ] `services/api`: `POST /summarize`, `GET /jobs/{id}` — not in 04's scope.
+- [x] `ConversationStore` in core (`docpipe_core.conversations`: DynamoDB, PK
+      userId SK conversationId, sliding TTL on `expiresAt`; moto-tested, and a
+      contract test reads `infra/components/data.py` for the key names). 2026-10-26.
+- [x] Auth + rate limiting (**locked design** — no Cognito): **REST API Gateway**
+      + **API key + usage plan** (5 rps / 10 burst, **500/day** quota = hard
+      Bedrock cost cap; health.studio holds the key), opaque `userId` required —
+      `infra/components/api.py`, **committed 2026-10-26, not applied**. End-user
+      login is Auth.js/Google in the app; the browser never calls docpipe, so the
+      app-asserted `userId` is safe.
+- [ ] The **per-user token-bucket in DynamoDB** inside the Lambda (usage plans
+      throttle per key, not per user) — not built; the per-key quota is the only
+      cap today.
+- [x] Packaging: `make lambda-zip` — `uv export` (locked, no dev) + wheels for
+      `aarch64-manylinux2014` + `docpipe_core` + `chat.py` → `build/lambda.zip`
+      (18 MB; `test_lambda_packaging_contract.py` ties it to the component). 2026-10-26.
+- [ ] …as a CI artifact — the target is local only; CI still lints without AWS.
+- [x] `api` component (`infra/components/api.py`): **REST API Gateway**, `/chat`
+      POST (AWS_PROXY, key required), Lambda (arm64, 29 s, JSON logs, 14-day
+      group), stage `dev` with method throttling, usage plan + key; exports
+      `chat_api_url`, `chat_api_key_id` (never the value). `pulumi preview`
+      2026-10-26: **14 to create, 1 to update (the guardrail definition — see
+      FINDINGS), 62 unchanged. Not applied** — the human's `pulumi up`.
+- [x] Smoke test script — `scripts/chat_smoke.py` (two turns on a synthetic
+      user, an out-of-corpus question asserting the "not covered" opener,
+      refuses a non-synthetic id; its checks are unit-tested). Written
+      2026-10-26; **not yet run** — it needs the deployed URL and key.
 
 ### Safety & audit (must exist before the first real Bedrock invoke)
 
@@ -346,8 +438,10 @@ in order:
       (`aws_bedrock_model_invocation_logging_configuration`): every
       prompt/response → S3 (SSE, bedrock-scoped bucket policy) + CloudWatch
       (retention-capped, via a Bedrock-assumed role).
-- [ ] Wire `guardrail_id`/`version` into the `ChatClient`/`SummarizerClient`
-      Converse calls (`docpipe-core`) — Phase 3, when the handlers are built.
+- [x] Wire `guardrail_id`/`version` into the Converse calls: `ChatClient` and
+      `KbAgent` take them, and the chat Lambda passes the stack's
+      (`ChatService.from_env` ← `GUARDRAIL_ID`/`GUARDRAIL_VERSION`). 2026-10-26.
+      `SummarizerClient`'s caller is the Phase 5 worker.
 
 ## Phase 4 — health.studio integration (chat live end-to-end)
 
@@ -363,6 +457,105 @@ real value before the heavier worker/benchmark work starts.
       red-flag-gate components
 - [ ] Privacy pass: opaque conversation IDs only, no user PII in payloads
 - [ ] E2E: message from the app → API Gateway → Bedrock → reply rendered
+
+## Phase 4b — Guided assessment: the agent that runs a protocol, not a Q&A
+
+**The product question, asked 2026-08-23: can the agent *do* things — walk the
+user through physical tests and hand back exercises — rather than only answer?**
+
+**The content already exists, graded and cited.** This is not corpus work:
+
+| doc | what it provides |
+|---|---|
+| `03-finding-your-compensations.md` | Tier 1 Mirror ★★☆, Tier 2 Movement Speed ★★☆, Tier 3 Cross-Body ★☆☆, Tier 4 Breathing ★★☆ — plus *Important Caveats About Self-Assessment* |
+| `04-neuromuscular-reeducation.md` | Practical Techniques, Progression Framework, Measuring Progress, *When Re-Education Isn't Enough* |
+| `15-medical-red-flags.md` | the screening gate, with a machine-readable summary table |
+| `evidence-honesty.md` | the downgrade rule — the machinery for presenting a ★☆☆ finding honestly |
+
+### The constraint is NOT the guardrail
+
+The instinct is that `safety.py` blocks this. Read again, it likely does not:
+`MedicalDiagnosis` denies *"identifying, confirming, or ruling out a disease,
+condition, or injury for an individual based on their symptoms"*. "One shoulder
+sits lower, which is consistent with upper-trap dominance" is not that, and
+exercises are not "medications, drugs, or specific medical treatments".
+**Assume it passes, then verify against the live guardrail before building on
+the assumption** — that prediction is exactly the kind this repo has been wrong
+about before.
+
+### The constraint the corpus names about itself
+
+Two findings already on record make the real argument:
+
+- **scapular dyskinesis is a normal finding, and the examiner knowing about the
+  pain makes it commoner** (health.studio FINDINGS 2026-08-18)
+- `12-pain-science.md` — fear-avoidance, catastrophizing, DIMs/SIMs:
+  **telling someone their body is asymmetric can make their pain worse**
+
+So the hazard is not the agent saying something forbidden. It is the agent
+doing exactly what it was asked — running tests, finding an asymmetry,
+reporting it — where **the reporting is the harm**. Everyone has asymmetries; a
+system built to hunt for them will always find some. A ★☆☆ Tier 3 finding
+presented as "here is what is wrong with you" is worse than no finding at all.
+
+That is a design constraint, not a filter to bolt on afterwards.
+
+### Blockers
+
+- [x] **Guardrail on the agentic path** — `KbAgent` sent no `guardrailConfig`
+      at all until 2026-08-23. Cleared; the loop is guarded on every iteration
+      and reports `AgentSession.guardrail_intervened`.
+- [ ] **Multi-turn state.** `KbAgent.ask()` is one question → one answer. An
+      assessment is inherently stateful: propose test → user reports what they
+      saw → interpret → next test or exercise. That is a different object, not
+      a longer prompt.
+- [ ] **More than one tool.** There is exactly one, `search_kb`. This needs at
+      minimum a red-flag screen and some notion of recording a finding.
+- [ ] **An instrument.** Every number here is recall@k on 66 questions. "Did it
+      run a good assessment" is not that, and without a new instrument this
+      ships unmeasured — which is precisely how graph expansion came to be
+      built on a single anecdote (FINDINGS 2026-08-23). Candidate assertions:
+      the red-flag screen ran first and was not bypassable; no finding was
+      presented above its evidence grade; no pattern was named that the user
+      did not report.
+- [x] **Verify the guardrail actually permits the flow** — verified 2026-08-23,
+      and the answer is **no, not reliably**: on the ratified question set the
+      DRAFT guardrail intervenes on a 31-question pool (~20–23 per run,
+      stochastic — zero questions blocked in all six runs), covering 4/4
+      nerve, 3/3 refer, 2/2 entrapment questions, and blocks some *before any
+      retrieval* — including `prose-02`, whose corpus answer is the
+      pain-science reassurance content. Symptom-shaped first-person questions
+      are what `MedicalDiagnosis` pattern-matches, and test-interpretation
+      language lives in the same space. **The blocker inverted: this phase
+      needs the guardrail tuned, not verified** — and so does Phase 3.
+      (FINDINGS 2026-08-23 re-baseline entry.)
+
+### Open questions — decide before writing code
+
+- **Does the assistant ever name a pattern** ("upper-trap dominant"), or only
+  reflect back what the user reported? Naming is more useful and is the step
+  that walks toward diagnosis. This is the single highest-leverage decision in
+  the phase.
+- **Who owns the red-flag gate** — the agent, or health.studio? Phase 4 already
+  lists an existing red-flag-gate component in the app. A gate in the app is
+  harder to prompt-inject past; a gate in the agent travels with every caller.
+- **What does a finding persist as?** An opaque session, or something the user
+  accumulates over weeks (`Creating Your Personal Compensation Map` implies the
+  latter). That is a privacy decision as much as a product one — Phase 4
+  requires opaque conversation IDs and no PII.
+- **Re-measurement as the honest exit:** *Measuring Progress* in `04` means the
+  same test re-run later. That is the only claim of benefit the system can make
+  that is not a promise.
+
+### Smallest honest first version
+
+Red-flag screen, non-bypassable → **one** Tier 1 test (★★☆, observation-only)
+→ user reports what they saw → **one** exercise from `04` with its evidence
+grade shown → progress = re-run the same test.
+
+One test, one exercise, one loop. It exercises every hard part — state,
+multi-tool, the gate, evidence-grade presentation — without committing to a
+protocol tree, and it gives the instrument something to score.
 
 ## Phase 5 — Async worker (compute TBD)
 
@@ -394,7 +587,7 @@ latency, recall, cost, and where each wins."** The measured decision *is* the
 artifact.
 
 - [x] Both KBs live over the same `corpus/` prefix; identical Titan v2 @ 1024
-      — live 2026-08-20, both verified holding the 496-chunk corpus
+      — live 2026-08-20; both verified holding the 585-chunk corpus 2026-08-22
 - [x] Golden set: the ratified 66-question key (v2, 2026-08-17) serves this
 - [x] **recall@k / MRR per store — measured 2026-08-20** (FINDINGS entries,
       reports in `docs/baselines/2026-08-20-*`): recall 0.7879 identical on
@@ -405,17 +598,33 @@ artifact.
       (net negative vs healthy semantic on this key); S3 Vectors rejects
       HYBRID outright. **Warm latency measured too: Aurora p50 0.523 s /
       p95 0.873 s ≈ 2× faster than S3 Vectors 0.960 / 1.797.** Cold-start
-      sample and the $ cost column remain.
-- [ ] **The graph only Aurora can produce: sweep `hnsw.ef_search`** (10 / 40 /
-      100 / 200 — a session-level `SET`, no rebuild) and plot recall@4 against
-      p95 latency. S3 Vectors can only ever be one opaque point on that curve.
-      This is the strongest single exhibit in the whole project.
-      **Caveat found 2026-08-20:** Bedrock issues its own SQL sessions, so the
-      sweep cannot reach the shipped Retrieve path — it needs a direct-SQL
-      harness, and the two curves must be labeled as different instruments.
-- [ ] Also cheap and only possible in Aurora: near-duplicate detection across the
-      corpus (`WHERE a.embedding <=> b.embedding < 0.15`) — answers "are my 383
-      chunks actually distinct?", a question the Retrieve API cannot express.
+      sample remains; the **$ column filled 2026-08-23**
+      (`docs/baselines/2026-08-23-cost-column.md` — verdict: the store is
+      1–3% of marginal cost; DeepSeek dominates at ~$0.006/question; rerank
+      is the priciest retrieval component at $0.002/query; Aurora's real
+      cost is the ~$0.005 cold-visit wake, not the warm query).
+- [x] **The `hnsw.ef_search` sweep — RUN 2026-08-23, and it is a flat line.**
+      (`scripts/aurora_sql_eval.py`, direct SQL via the RDS Data API, one
+      transaction per value so `SET LOCAL` holds.) recall@4/5/10, MRR and
+      per-question ranks are **identical at ef 10/40/100/200** — at n=585 the
+      ef=10 beam already reaches the whole graph, so there is no
+      approximation error to trade. "The strongest single exhibit" exists only
+      at corpus sizes where HNSW actually approximates; the honest chart is
+      the flat line, labeled with why. The salvage: same store/corpus/
+      questions, direct SQL p50 0.154 s vs Bedrock Retrieve 0.523 s — ~70% of
+      the shipped Aurora path's latency is Bedrock, not Postgres. Denominator
+      caveat when citing: sweep recall@5 0.8033 is answerable-only (61);
+      × 61/66 = 0.7424, the shipped-path number exactly. FINDINGS 2026-08-23;
+      `docs/baselines/2026-08-23-aurora-585-efsearch-sweep.json`.
+- [x] Near-duplicate detection — **RUN 2026-08-23: 304 pairs < 0.15**, and the
+      structure is the finding: prose is clean (every prose pair is two
+      sections of the same authored doc; zero cross-document pairs), while the
+      graph registry supplies the mass — ~93 sibling-nerve pairs (closest
+      0.0133, proper vs common palmar digital median), and `--sources` chunks
+      colliding with their own doc's content sections. Measured confusability
+      exactly where the `nerve-*` misses live; feeds the bibliography-move
+      case. FINDINGS 2026-08-23;
+      `docs/baselines/2026-08-23-aurora-585-near-dupes.json`.
 - [ ] **Retrieval-strategy matrix (added 2026-08-20)** — one corpus, one
       ratified key, every strategy a row. Single-shot rows are done (above);
       agentic rows run the Converse tool loop (`scripts/kb_agentic_eval.py`,
@@ -428,28 +637,89 @@ artifact.
       - [x] S3 Vectors agentic · [x] Aurora agentic · [x] Aurora HYBRID
         agentic — two runs each, 2026-08-20: all land 0.89–0.95
         session_recall, store- and mode-agnostic; single-shot ∪ agentic
-        = 61/61 (FINDINGS six-run entry). Next measured run: verbatim
-        query as tool call 1, then reformulate.
-      - [ ] rerank rows ride the existing `RERANK=--rerank` path when the
-        3 req/min Cohere quota makes a full run tolerable (~25 min, FINDINGS
-        2026-08-17)
-      - [ ] **Graph RAG, two candidate rungs, in order:** (a) corpus-native
-        graph expansion — the body-graph chunks ARE an exported graph, so a
-        retriever that expands seed hits along adjacency (connection →
-        its two structure chunks) measures "does graph structure help" with
-        no new store; (b) managed Bedrock GraphRAG = a third KB on Neptune
-        Analytics — **price it via the Price List API first**; it bills per
-        m-NCU-hour with a capacity floor, so it is a create→measure→destroy
-        exhibit, never an always-on store, and it needs its own ruling before
-        any resource exists.
-- [ ] **Playground ("tester window"), asked for 2026-08-21:** a local page
+        = 61/61 (FINDINGS six-run entry). ⚠️ Those runs were **unguarded**
+        (the eval never passed a guardrail id — FINDINGS 2026-08-23).
+      - [x] **Re-baseline at 585 with the guardrail + null controls +
+        verbatim-first — 14 runs, 2026-08-23** (FINDINGS entry): corpus
+        496→585 costs nothing (0.9057 vs 0.9098 unguarded); the **guardrail
+        costs −10 points** (0.8033 guarded), stochastically — 31-question
+        block pool, zero always-blocked, nerve 4/4 / refer 3/3 / entr 2/2
+        ever-blocked; the **verbatim seed buys +4 back** (0.9467, three of
+        four runs at exactly 58/61; union 60/61, `conn-05` the one answerable
+        question nothing agentic ever hits). Trade-off: the seed zeroes
+        abstention on the not-covered class. Guardrail tuning is now on the
+        critical path before Phase 3 ships.
+      - [x] **rerank rows — measured 2026-08-22/23, both stores.** recall@5
+        **0.7879**, MRR **0.6571**, identical on S3 Vectors and Aurora — and
+        identical question by question (66/66 same hit, 66/66 same rank, 63/66
+        identical top-5). The cross-encoder demotes vector search to a
+        candidate generator for one 25-doc pool, so every property that
+        distinguishes the backends lives *below* it. **On the shipped path,
+        Aurora vs S3 Vectors is not a retrieval-quality decision.**
+        The sweep must be **paced, not retried**: Cohere Rerank 3.5 is 3
+        req/min at ACCOUNT level and `Adjustable: false`, so ~22 min per store
+        is a floor set by AWS, and both stores share one bucket — they cannot
+        run in parallel.
+      - [x] **(a) corpus-native graph expansion — BUILT 2026-08-21**
+        (`docpipe_core.graph`, `make graph-index`, `graph expand` in the
+        playground). The body-graph chunks are a typed, per-edge-graded graph
+        already: six id-declaring fields address 301 of 304 chunks, and four
+        sections yield **247 edges** (`in_chain` 84, `has_member` 84,
+        `innervated_by` 56, `supplies` 23; 224 graded, 56 `[VERIFIED]`).
+        Whole index = **106 KB of JSON** — no store, no LLM, no AWS resource.
+        **SCORED 2026-08-23, and the verdict is negative: dominated by `k=9`.**
+        Against the nine genuine misses of the reranked 585 baseline, graph
+        expansion (budget 4) rescues **2**; plain `k=9` rescues **6**, and the
+        graph's two are a strict subset of the six. Expansion spends up to four
+        extra passages, so `k=5+4` and `k=9` are the same context budget — at
+        that budget the graph loses. Three of the nine produce **zero hops**,
+        because their only relationship content is the prose sections that
+        carry no parseable ids, so it is thinnest exactly where retrieval is
+        weakest.
+        The A/B that justified building it — *"vector search never surfaced
+        either fascial-line chunk; expansion added both"* — ran at `top_k=4`.
+        That is evidence the right chunks sat just outside a narrow window,
+        i.e. an argument for widening `k`, read as an argument for traversal
+        because traversal was what was being built. **A demo showing "X was
+        missing and my feature added it" is not evidence until the null control
+        has been run.**
+        Not retracted, scoped: this is retrieval *reach* on a mostly
+        single-hop question set, and says nothing about answer quality or the
+        agentic path. `chain-05` — which rerank loses and traversal recovers —
+        shows the edge does know something the cross-encoder does not.
+        **Do not ship as a default.** If it is to be defended, the test is a
+        question set that *requires* two hops; if it does not win there, it
+        does not win.
+      - [ ] **(b) managed Bedrock GraphRAG on Neptune Analytics — priced
+        2026-08-21, and the ruling is: not now.** Price List API, us-east-1:
+        **$0.03 per m-NCU-hour**, smallest tier 16 m-NCU = **$0.48/hr ≈
+        $350/mo**, and a *stopped* graph still bills 10% (≈$35/mo) — there is
+        no scale-to-zero, unlike Aurora's ~$0.12/mo. Affordable only as
+        create→measure→destroy (~$1.50 for a three-hour session). Two further
+        blockers found while pricing it: graph construction supports only
+        Claude 3 Haiku / Haiku 4.5 / Nova, which **breaks the DeepSeek-only
+        decision**; and GraphRAG *infers its own graph* from the prose via
+        `CHUNK_ENTITY_EXTRACTION`, discarding the hand-verified edges rung (a)
+        traverses. Worth doing eventually as the third row — *no graph /
+        verified graph / inferred graph* — but it measures a different
+        question, and rung (a) answers ours.
+- [x] **Playground ("tester window"), asked for 2026-08-21 — built same day**
+      (`scripts/playground.py` + `.html`, `make playground`). Verified live
+      against both KBs: single-shot and agentic, S3 Vectors and Aurora,
+      HYBRID, rerank, multi-turn history. Two asymmetries it surfaces rather
+      than hides — the agentic path applies **no guardrail** and ignores
+      `rerank` (see FINDINGS 2026-08-21). Original spec: a local page
       (thin script over `docpipe_core`, same pattern as the eval CLIs) — one
       question box; toggles for store, single-shot vs agentic, HYBRID,
       rerank, `min_evidence`; output shows passages with citations + scores,
       the agent's tool-call trace, latency and token cost. Local because the
       AWS credentials live here; once Phase 3's API exists it can point there
       instead.
-- [ ] Writeup: a results table + "where each wins" — the README's real headline
+- [x] Writeup — **landed 2026-08-23** as README "The benchmark" section:
+      answerable-denominator results table (single-shot / rerank / agentic
+      guarded–unguarded–verbatim), the three punchlines (the store is not the
+      lever; the guardrail gives back what the loop buys; verbatim seed +4),
+      and the where-each-wins table with the introspection verdict.
 
 **Verified prices (AWS Price List API, us-east-1, 2026-08-13)** so the cost
 column is not guesswork: Serverless v2 **$0.12/ACU-Hr**, storage **$0.10/GB-Mo**,
@@ -463,7 +733,7 @@ backup **$0.021/GB-Mo**, I/O **$0.20 per million**. Note `min_capacity = 0` bill
 - [ ] Cost backstop: **AWS Budgets alarm on Bedrock spend** + CloudWatch alarm
       on invocation-count spikes (catches abuse before the bill does)
 - [ ] README: architecture diagram render, demo GIF/recording, cost table
-- [ ] `terraform destroy` clean-pass verified (no orphaned resources)
+- [ ] `make infra-down` clean-pass verified (no orphaned resources)
 
 ## Non-goals
 

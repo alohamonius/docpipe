@@ -23,4 +23,7 @@ config:
   # because the value was implicit.
   docpipe:bedrockModelId: us.deepseek.r1-v1:0
   docpipe:chatModelId: deepseek.v3.2
+  # Phase 3's POST /chat: Lambda + REST API Gateway + usage plan + key. Needs
+  # build/lambda.zip from `make lambda-zip` before any preview or up.
+  docpipe:enableChatApi: "true"
 encryptionsalt: v1:mtI+hMM57tE=:v1:9uv7mL2rGJ0t/wfB:HuANWt7hNDBqzvonrj7OPdUVbnAqnA==

@@ -10,9 +10,8 @@ from __future__ import annotations
 
 import contextlib
 
-from pulumi.dynamic import CreateResult, DiffResult, Resource, ResourceProvider, UpdateResult
-
 import pulumi
+from pulumi.dynamic import CreateResult, DiffResult, Resource, ResourceProvider, UpdateResult
 
 _KEYS = ("region", "bucket_name", "log_group_name", "role_arn")
 

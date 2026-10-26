@@ -69,10 +69,17 @@ Vectors live in **S3 Vectors** (not OpenSearch Serverless) — serverless and
 near-zero cost at rest, which keeps the whole chat path permanently
 deployable.
 
-This is the KB that exists today. A **second** Knowledge Base over the same
-source bucket, backed by Aurora PostgreSQL + pgvector, is the intended primary
-and is not built yet — the two are the subject of the benchmark that is this
-project's headline deliverable (`PLAN.md`, Phase 5b).
+A **second** Knowledge Base sits over the same source bucket, backed by
+**Aurora PostgreSQL + pgvector** — built and ingested 2026-08-20, both KBs
+holding the same 496-chunk corpus and differing only in the storage slot. The
+two are the subject of the benchmark that is this project's headline
+deliverable (`PLAN.md`, Phase 5b).
+
+Its first result: **the store barely matters.** Recall is identical (0.7879),
+MRR within noise (0.5634 S3 Vectors / 0.5646 Aurora), and agentic retrieval
+lands 0.89–0.95 on either store in any search mode — the retrieval *loop* is
+the effect, not the store. Aurora's clear wins are warm latency (~2×: p50
+0.523 s vs 0.960 s) and the exhibits only a real database can produce.
 
 ### 3. Summaries — asynchronous, decoupled by a queue
 
@@ -112,6 +119,74 @@ role, not a decision. Everything is per-user (opaque IDs from the app; no
 PII/PHI crosses to AWS), and the chat path can stay up permanently while the
 worker + Aurora side is torn down between sessions.
 
+## The benchmark: S3 Vectors vs Aurora pgvector, same corpus, same questions
+
+Two Bedrock Knowledge Bases over one S3 source bucket, differing in exactly
+one slot — the vector store. Same 585-chunk corpus, same Titan v2 @ 1024
+embeddings, one ratified 66-question answer key (61 answerable + 5 the corpus
+deliberately cannot answer). Every retrieval strategy is a row; every number
+has a signed report in [`docs/baselines/`](docs/baselines/) and a dated entry
+in [`FINDINGS.md`](FINDINGS.md).
+
+Recall below is **on the 61 answerable questions**. Single-shot rows score the
+one returned list (recall@5); agentic rows score the whole session (any tool
+call's top-5 — a different instrument, so don't read across the gap as if it
+were one column).
+
+| strategy | S3 Vectors | Aurora | per 1k questions |
+|---|---|---|---|
+| single-shot, semantic, k=5 | 0.7869 | 0.8033 | $0.06 / ~$0.01 warm |
+| single-shot + Cohere rerank (25-doc pool) | **0.8525** | **0.8525** — identical, question by question | + $2.00 |
+| agentic loop (DeepSeek drives `search_kb`), guarded | 0.8033 | 0.8033 (mean of 2 ea.) | ~$4.60 |
+| agentic loop, unguarded | 0.9057 (mean of 4, both stores) | ← | ~$5.70 |
+| agentic + verbatim-first seed | **0.9467** (3 of 4 runs = 58/61) | ← | ~$5.70 |
+
+**What the table actually says:**
+
+1. **The store is not the lever.** Reranked, the two stores return the same
+   top-5 question by question (66/66 same hit, 66/66 same rank) — the
+   cross-encoder demotes both to candidate generators for the same pool. On
+   the agentic path the loop, not the store, buys the recall. The real levers
+   all live *above* the store.
+2. **The guardrail gives back everything the loop buys.** Guarded agentic
+   recall (0.8033) lands exactly on single-shot. It intervenes on 20–23 of 66
+   questions per run, stochastically (31-question pool, none blocked every
+   run), concentrated on the clinical strata — 4/4 nerve, 3/3 referral, 2/2
+   entrapment questions ever-blocked. Tuning it is on the critical path.
+3. **Seeding tool call 1 with the user's verbatim question** (instead of
+   letting the model reformulate from scratch) is worth +4 points and
+   collapses run variance — at the cost of zeroing abstention on the
+   questions the corpus can't answer, because the seed retrieves before the
+   model can decline.
+
+**Where each store wins:**
+
+| | S3 Vectors | Aurora pgvector |
+|---|---|---|
+| warm Retrieve p50 / p95 | 0.960 s / 1.797 s | **0.523 s / 0.873 s** (~2×) |
+| at rest | **$0.00** | ~$0.12/mo floor (storage + backup survive auto-pause) |
+| cold start | none | resume ~15 s; first call after idle measured at 23.5 s; ~$0.005 per cold visit |
+| per query | flat $0.000056, any traffic pattern | ~$0.000009 warm — steady traffic wins, sparse traffic pays the wake |
+| HYBRID search | rejected outright | supported (and net-negative on this corpus: 0.5331 MRR vs 0.5646 semantic) |
+| introspection | opaque | full SQL: the `ef_search` sweep, near-dup scan, `EXPLAIN` |
+
+The introspection row is where Aurora earned its keep this phase, in both
+directions: the `hnsw.ef_search` sweep came back **flat** (identical recall
+and per-question ranks at ef 10–200 — 585 vectors is too small for HNSW to
+approximate, and only direct SQL could prove that), and the same instrument
+showed **~70% of the shipped path's warm latency is Bedrock overhead, not the
+database** (0.154 s direct SQL vs 0.523 s via Retrieve). The near-dup scan
+answered "are my chunks distinct": prose entirely yes, while the anatomical
+nerve registry carries ~93 sibling pairs the embedder can barely separate —
+measured confusability exactly where retrieval misses live.
+
+**The verdict:** on the shipped path, Aurora vs S3 Vectors is not a
+retrieval-quality decision and not a meaningful cost decision (the store is
+1–3% of marginal cost; the LLM loop is ~100× the retrieval it drives). It is
+an operational-shape decision — latency floor and SQL introspection vs zero
+standing cost and no wake — and this repo keeps both because the benchmark
+*was* the deliverable.
+
 ## Health & privacy constraints
 
 - The assistant is **non-diagnostic**: system prompt forbids diagnosis and
@@ -127,27 +202,44 @@ worker + Aurora side is torn down between sessions.
 
 ## Repo layout
 
-The same taxonomy as a TS monorepo's `packages/` + `apps/`, with the runnable
-half split by *who runs it* — that split is the load-bearing rule:
+Every top-level directory is named for the **role** it plays, never for the
+tool that happens to implement it — and the runnable half is split by *who
+runs it*, which is the load-bearing rule:
 
 ```
-packages/core/     the library ("packages/"): models, storage, queue, Bedrock
+packages/core/     the library: models, storage, queue, Bedrock
                    chat/summarization/agent clients, retrieval, eval scoring,
                    corpus sync. Installed, typed, unit-tested; src layout so
                    tests can only import the installed package. All logic
                    lives here — nothing below is allowed to get clever.
-services/          the deployables ("apps/"): each dir ships as a unit.
-                   kb_sync (corpus sync CLI) today; api (Lambda) and worker
-                   (SQS consumer) land in Phase 3. Thin shells over core.
+services/          the deployables: each dir ships as a unit. kb_sync (corpus
+                   sync CLI) and api (the POST /chat Lambda) today; worker
+                   (SQS consumer) in Phase 5. Thin shells over core.
 scripts/           operator CLIs — run from a laptop, never deployed:
-                   kb_eval, kb_agentic_eval, aurora_bootstrap, status.
+                   kb_eval, kb_agentic_eval, aurora_bootstrap, status,
+                   playground (`make playground` — chat in a browser),
+                   graph_index (`make graph-index` — the body-graph edges).
                    Also thin shells over core; if a script grows logic,
                    the logic moves into core with tests (see agent.py).
-pulumi/            infrastructure as code, quarantined: one component per
+infra/             infrastructure as code, quarantined: one component per
                    concern, own CI job, no imports in either direction
                    between it and the Python packages.
 docs/              runbooks, committed baselines/reports, decision records.
 ```
+
+If you know TS monorepos, the shape is familiar — `packages/` is `packages/`,
+`services/` is `apps/`, `scripts/` is `tools/`, `infra/` is `infra/`. Two of
+those names are deliberately *not* borrowed. Python has no convention above the
+package level (the one real rule, PyPA's `src/` layout, is already followed
+inside `packages/core/`), so the names answer to Python readers instead:
+`apps/` is Django's word for pluggable libraries — the opposite of a deployable
+— and these are backend units anyway, a Lambda and a queue consumer.
+`scripts/` is plain idiomatic Python.
+
+The rule that keeps this from rotting: **`services/` and `scripts/` are thin
+shells.** The moment one grows logic, that logic moves into `packages/core`
+with tests — which is exactly what happened to the agent tool loop in
+`c74898f`.
 
 ## Infra / secrets split
 
@@ -156,7 +248,7 @@ Everything in this repo is public by design. What never enters git:
 - Pulumi state — lives in a self-managed S3 backend (`pulumi login s3://…`)
 - credentials — AWS auth via profile/SSO/environment, never in code
 
-See [`pulumi/README.md`](pulumi/README.md) for the component map and
+See [`infra/README.md`](infra/README.md) for the component map and
 [`PLAN.md`](PLAN.md) for the build phases and current status.
 
 ## Dev quickstart
@@ -180,19 +272,22 @@ failing the run. Both files are gitignored; regenerate rather than commit.
 ## Cost notes
 
 The foundation is designed to cost **~$0 at rest** — and *at rest* is doing
-real work in that sentence: it holds because Aurora is currently gated off
-(`enableAurora: "false"`). When Aurora comes on for the Phase 5b benchmark,
-`min_capacity = 0` pauses **ACU billing** but not storage or backup, so the
-floor becomes ~$0.12/mo rather than $0. Small, but not zero — quoted honestly
-because the whole point of Phase 5b is a cost column nobody has to trust.
+real work in that sentence. **Aurora has been on since 2026-08-20**
+(`enableAurora: "true"`), so the floor is no longer $0: `min_capacity = 0`
+pauses **ACU billing** but not storage or backup, putting it at **~$0.12/mo**.
+Small, but not zero — quoted honestly because the whole point of Phase 5b is a
+cost column nobody has to trust. (Month-to-date across every service still
+rounds to $0, but the cluster has only existed for two days and Cost Explorer
+lags, so the design figure is the one to plan against, not that reading.)
 
 There is deliberately **no NAT gateway** — nothing needs VPC egress (the chat
 Lambda runs outside the VPC; the KB is serverless S3 Vectors; Aurora uses the
 RDS Data API). The VPC, subnets, gateway endpoints, DynamoDB (on-demand), SQS,
 S3, and S3 Vectors are all free or pay-per-use at rest.
 
-Nothing deployed today has a standing cost. The sync chat path (API Gateway +
-Lambda + Bedrock + DynamoDB + KB) can stay up permanently; `make infra-down`
+The only standing cost today is Aurora's ~$0.12/mo of storage and backup —
+everything else is free or pay-per-use at rest. The sync chat path (API Gateway
++ Lambda + Bedrock + DynamoDB + KB) can stay up permanently; `make infra-down`
 tears down everything when idle. Worker compute (Phase 5) is still an open
 decision — EKS would be the one always-on cost (~$73/mo), which is why Lambda
 is the default recommendation.
@@ -211,7 +306,8 @@ is the default recommendation.
 - **Aurora `min_capacity = 0` costs a cold first query.** When the cluster has
   auto-paused, the first connection pays a resume latency before it serves.
   We accept that because the summary worker is async — a few seconds on the
-  first job after idle is invisible to users. *Measured resume time (Phase 5,
-  once Aurora is live): **TODO — time it and record the number here.***
+  first job after idle is invisible to users. *Measured: the first call after
+  idle took **23.5 s** (vs 1.32 s warm, 2026-08-23); the Data API surfaces the
+  resume as a retryable `DatabaseResumingException` for ~15 s of that.*
 - **Titan v2 embeddings pinned to 1024 dims** (`dimensions = 1024`), matching
   the S3 Vectors index. Chosen once, up front — the index can't mix dimensions.

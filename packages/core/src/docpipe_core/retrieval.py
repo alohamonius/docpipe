@@ -20,10 +20,15 @@ path; mirroring that here is the caller's decision, not this module's.
 
 from __future__ import annotations
 
+import random
+import time
+from collections.abc import Callable
 from typing import Any
 
 import boto3
 from pydantic import BaseModel
+
+from docpipe_core.aws import with_backoff
 
 # Attribute names written by health.studio's `pnpm kb:build` into each
 # `<chunk>.md.metadata.json`. Bedrock echoes them back under `metadata`.
@@ -87,6 +92,9 @@ class KnowledgeBaseClient:
         agent_runtime_client: Any = None,
         *,
         semantic_score_is_distance: bool = False,
+        max_retries: int = 4,
+        sleep: Callable[[float], None] = time.sleep,
+        rng: Callable[[], float] = random.random,
     ) -> None:
         """``semantic_score_is_distance``: set True for an Aurora/RDS-backed KB.
 
@@ -95,14 +103,27 @@ class KnowledgeBaseClient:
         sorts descending, so the semantic result list arrives **worst-first**
         (63/66 golden questions came back in exactly reversed order; the
         candidate set itself is the correct top-k). The S3 Vectors path returns
-        ``(1 + cosine)/2`` and orders correctly, and the HYBRID and rerank
-        paths order correctly on both stores — so the flag re-sorts only the
+        ``(1 + cosine)/2`` and orders correctly, so the flag re-sorts only the
         raw semantic path, ascending. Per-KB because score semantics are a
         property of the storage backend, not of a call.
+
+        CORRECTED 2026-08-22. This used to add "and the HYBRID and rerank paths
+        order correctly on **both stores**". HYBRID was measured on both; the
+        Aurora rerank half was never measured and could not have been — the
+        Aurora KB role was provisioned without ``bedrock:Rerank`` and returns
+        403 on that path (fixed in ``infra/components/kb_aurora.py``, needs an
+        apply). Until an Aurora reranked baseline exists, nothing is known
+        about how that path orders.
         """
         self.knowledge_base_id = knowledge_base_id
         self.semantic_score_is_distance = semantic_score_is_distance
         self._client = agent_runtime_client or boto3.client("bedrock-agent-runtime")
+        self._max_retries = max_retries
+        self._sleep = sleep
+        self._rng = rng
+
+    def _with_backoff(self, call: Callable[[], Any]) -> Any:
+        return with_backoff(call, max_retries=self._max_retries, sleep=self._sleep, rng=self._rng)
 
     def retrieve(
         self,
@@ -150,7 +171,7 @@ class KnowledgeBaseClient:
         Reranking runs under the **KB service role**, not the caller — Bedrock
         assumes ``<prefix>-kb-role`` for the rerank step, so that role needs
         ``bedrock:Rerank`` plus ``InvokeModel`` on the rerank model (see
-        ``pulumi/components/kb.py``; a 403 here names the KB role, not you).
+        ``infra/components/kb.py``; a 403 here names the KB role, not you).
 
         ``min_evidence`` maps to a Bedrock retrieval filter on the
         ``maxEvidence`` sidecar attribute, so the filtering happens in the
@@ -217,10 +238,12 @@ class KnowledgeBaseClient:
                     "numberOfRerankedResults": top_k,
                 },
             }
-        response = self._client.retrieve(
-            knowledgeBaseId=self.knowledge_base_id,
-            retrievalQuery={"text": query},
-            retrievalConfiguration={"vectorSearchConfiguration": search},
+        response = self._with_backoff(
+            lambda: self._client.retrieve(
+                knowledgeBaseId=self.knowledge_base_id,
+                retrievalQuery={"text": query},
+                retrievalConfiguration={"vectorSearchConfiguration": search},
+            )
         )
         passages = [_passage_of(result) for result in response.get("retrievalResults", [])]
         # Only the raw semantic path carries the inverted RDS score (see

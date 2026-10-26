@@ -46,7 +46,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 # Bedrock's contract. These names are mirrored in
-# pulumi/components/kb_aurora.py's field_mapping — change one, change both, or
+# infra/components/kb_aurora.py's field_mapping — change one, change both, or
 # ingestion fails at write time with a column that does not exist.
 SCHEMA = "bedrock_integration"
 TABLE = "bedrock_kb"
@@ -113,7 +113,7 @@ def stack_outputs() -> dict[str, str]:
     try:
         raw = subprocess.run(
             ["pulumi", "stack", "output", "--json", "--stack", "dev"],
-            cwd="pulumi",
+            cwd="infra",
             capture_output=True,
             text=True,
             check=True,

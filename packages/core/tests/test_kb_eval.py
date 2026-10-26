@@ -333,7 +333,9 @@ def test_rerank_reaches_the_client_and_the_report_records_it() -> None:
     baseline as if they measured the same thing."""
     fake = FakeAgentRuntime({})
     client = KnowledgeBaseClient("kb-123", agent_runtime_client=fake)
-    report = score_question_set(client, question_set(), rerank=True, rerank_pool=20)
+    report = score_question_set(
+        client, question_set(), rerank=True, rerank_pool=20, sleep=lambda _: None
+    )
 
     search = fake.calls[0]["retrievalConfiguration"]["vectorSearchConfiguration"]
     assert search["numberOfResults"] == 20
@@ -401,3 +403,48 @@ def test_the_shipped_question_set_loads_and_is_not_yet_ratified(tmp_path: Any) -
     loaded = load_question_set(path)
     assert not loaded.is_ratified
     assert loaded.questions[0].question_class == "direct"
+
+
+# ── Pacing the reranked sweep ───────────────────────────────────────────────
+# Cohere Rerank 3.5 is 3 req/min at ACCOUNT level and not adjustable. Measured
+# 2026-08-22: 3 calls succeed back to back, the 4th throws ThrottlingException
+# in ~5 s. `with_backoff` sleeps 1+2+4+8 = 15 s over four attempts — always
+# just short of the 20 s the bucket needs — so retrying cannot win and a
+# reranked sweep degenerates into a storm. Pace instead.
+
+
+def paced(rerank: bool, rpm: float = 3.0) -> list[float]:
+    """Sleeps the harness would take for a 3-question set."""
+    slept: list[float] = []
+    ticks = iter(range(0, 1000))  # 1 s per clock read, deterministic
+    fake = FakeAgentRuntime({})
+    client = KnowledgeBaseClient("kb-123", agent_runtime_client=fake)
+    score_question_set(
+        client,
+        question_set(),
+        rerank=rerank,
+        rerank_rpm=rpm,
+        sleep=slept.append,
+        clock=lambda: float(next(ticks)),
+    )
+    return slept
+
+
+def test_a_reranked_sweep_waits_for_the_bucket_to_refill() -> None:
+    slept = paced(rerank=True)
+
+    # 3 questions → 2 gaps. 60/3 = 20 s spacing, minus the 1 s the clock
+    # advanced during the call itself.
+    assert slept == [19.0, 19.0]
+
+
+def test_the_raw_sweep_is_not_slowed_at_all() -> None:
+    """Only reranking touches Cohere. Pacing the raw path would turn a
+    90-second baseline run into 22 minutes for no reason."""
+    assert paced(rerank=False) == []
+
+
+def test_pacing_can_be_switched_off_for_a_raised_quota() -> None:
+    """`Adjustable: false` today, but the number is AWS's, not ours — a harness
+    that hardcodes it becomes the bottleneck the day it changes."""
+    assert paced(rerank=True, rpm=0) == []

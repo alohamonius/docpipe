@@ -1,8 +1,10 @@
 import json
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
 import pytest
+from botocore.exceptions import ClientError
 from docpipe_core.kb_sync import CorpusSyncer, SyncAction, discover_corpus
 
 BUCKET = "docpipe-test"  # created by the s3_bucket fixture (conftest)
@@ -557,11 +559,258 @@ def test_sidecars_are_exempt_from_the_size_guard(tmp_path: Path, s3_bucket) -> N
 
 
 def test_default_limit_admits_the_largest_real_chunk() -> None:
-    """32 KiB is measured, not picked: the corpus's largest chunk is 24.7 KB
-    ≈ 5k tokens (~4.9 B/token), so every real chunk clears the default with
-    ~30% headroom, while a file that trips it is plausibly past Titan's
-    8,192-token cap at the generous 4 B/token estimate."""
+    """32 KiB is measured, not picked.
+
+    UPDATED 2026-08-21. This used to read "the corpus's largest chunk is 24.7 KB
+    … ~30% headroom". The corpus has since grown to 585 chunks and the largest
+    is now `body-graph-joint--radiocarpal` at 31,072 B — headroom is ~5%, not
+    ~30%. The limit still holds, but it is no longer comfortable, which is
+    exactly why the build now warns at 90% of the cap.
+    """
     from docpipe_core.kb_sync import DEFAULT_MAX_DOC_BYTES, TITAN_V2_MAX_TOKENS
 
     assert DEFAULT_MAX_DOC_BYTES == TITAN_V2_MAX_TOKENS * 4
-    assert DEFAULT_MAX_DOC_BYTES > 24_700
+    assert DEFAULT_MAX_DOC_BYTES > 31_072
+
+
+# ── Planning cost: O(1) requests, not O(corpus) ─────────────────────────────
+# `plan` used to ask S3 for each file's ETag with its own `head_object`. That
+# is the textbook N+1: at 585 chunks plus sidecars it was 1,170 sequential
+# round trips and a measured ~8 minutes, for information ListObjectsV2 hands
+# over in full for free. The bug is invisible in a 2-file test fixture and
+# only bites at real corpus size, so the guard has to be a cost assertion.
+
+
+def count_s3_calls(client: Any) -> Counter[str]:
+    """Live count of S3 API operations by name, keyed off botocore's own event
+    bus — so it sees calls made *inside* a paginator, which wrapping the client
+    object would miss."""
+    counts: Counter[str] = Counter()
+    client.meta.events.register("before-call.s3", lambda model, **_: counts.update([model.name]))
+    return counts
+
+
+def test_planning_costs_the_same_whether_the_corpus_is_4_files_or_40(
+    tmp_path: Path, s3_bucket
+) -> None:
+    """The N+1 regression test. Ten times the files, byte-identical request
+    count — that equality is only possible if nothing is asked per file."""
+    small, large = tmp_path / "small", tmp_path / "large"
+    make_wide_corpus(small, docs=4)
+    make_wide_corpus(large, docs=40)
+
+    counts = count_s3_calls(s3_bucket)
+    syncer(s3_bucket, FakeAgent([])).plan(small)
+    small_calls = sum(counts.values())
+    counts.clear()
+    syncer(s3_bucket, FakeAgent([])).plan(large)
+
+    assert sum(counts.values()) == small_calls
+    assert counts["HeadObject"] == 0
+
+
+def test_planning_a_synced_corpus_reads_etags_from_one_listing(tmp_path: Path, s3_bucket) -> None:
+    """The populated case: 40 documents already in the bucket, every one of
+    them correctly recognised as unchanged, and still not one HeadObject."""
+    make_wide_corpus(tmp_path, docs=40)
+    syncer(s3_bucket, FakeAgent([])).sync(tmp_path, start_ingestion=False)
+
+    counts = count_s3_calls(s3_bucket)
+    planned = syncer(s3_bucket, FakeAgent([])).plan(tmp_path)
+
+    assert len(planned) == 80  # 40 documents + 40 sidecars
+    assert {d.action for d in planned} == {SyncAction.SKIPPED}
+    assert counts["HeadObject"] == 0
+    assert counts["ListObjectsV2"] == 1
+
+
+# ── Which files actually feed the corpus ────────────────────────────────────
+# `docs/` is not the corpus. The build allowlists directories and excludes
+# named files, and the manifest records both. A staleness check that walks
+# `docs/**` by mtime instead flags `docs/FINDINGS.md` — an engineering log,
+# edited after nearly every session, that produces zero chunks. See the
+# 2026-08-21 FINDINGS entry: this fired on a real sync.
+
+MANIFEST_SHAPE = {
+    "allowedDirectories": ["anatomy", "exercise-science"],
+    "excludedDocs": [
+        {"path": "FINDINGS.md", "reason": "root-level doc — not in an allowlisted directory"},
+        {"path": "anatomy/referral-boundary.md", "reason": "KB build policy, not knowledge"},
+    ],
+}
+
+
+@pytest.mark.parametrize(
+    "path, feeds",
+    [
+        ("anatomy/12-pain-science.md", True),
+        ("exercise-science/01-emg.md", True),
+        ("FINDINGS.md", False),  # the one that actually cried wolf
+        ("PM.md", False),  # root-level, not even named in excludedDocs
+        ("anatomy/referral-boundary.md", False),  # allowlisted dir, excluded by name
+    ],
+)
+def test_only_allowlisted_docs_count_as_corpus_inputs(path: str, feeds: bool) -> None:
+    from docpipe_core.kb_sync import feeds_the_corpus
+
+    assert feeds_the_corpus(path, MANIFEST_SHAPE) is feeds
+
+
+def test_a_manifest_without_the_keys_over_warns_rather_than_going_silent() -> None:
+    """Old manifests predate `allowedDirectories`. Over-warning is recoverable;
+    silently ingesting a stale corpus is not."""
+    from docpipe_core.kb_sync import feeds_the_corpus
+
+    assert feeds_the_corpus("FINDINGS.md", {}) is True
+
+
+# ── Ingestion statistics: new AND modified ──────────────────────────────────
+
+
+def test_indexed_counts_modified_documents_too(tmp_path: Path, s3_bucket) -> None:
+    """Bedrock splits the count in two. Reading only `New` understates every
+    job and reports exactly 0 for the commonest case — a sync that edits
+    existing chunks and adds none, which is indistinguishable from a no-op.
+    Numbers are job FWU5IEPVHS, 2026-08-21: 89 + 7 = the 96 changed documents.
+    """
+    make_corpus(tmp_path)
+    agent = FakeAgent(
+        ["STARTING", "COMPLETE"],
+        statistics={
+            "numberOfDocumentsScanned": 585,
+            "numberOfNewDocumentsIndexed": 89,
+            "numberOfModifiedDocumentsIndexed": 7,
+            "numberOfDocumentsFailed": 0,
+        },
+    )
+    report = syncer(s3_bucket, agent).sync(
+        tmp_path, wait=True, sleep=lambda _: None, clock=counting_clock()
+    )
+
+    assert report.ingestion is not None
+    assert report.ingestion.documents_indexed == 96
+
+
+def test_an_edit_only_ingest_does_not_report_zero(tmp_path: Path, s3_bucket) -> None:
+    """The regression that motivated it: nothing new, seven edits, and the old
+    reading printed `indexed=0` while seven documents were re-embedded."""
+    make_corpus(tmp_path)
+    agent = FakeAgent(
+        ["STARTING", "COMPLETE"],
+        statistics={"numberOfNewDocumentsIndexed": 0, "numberOfModifiedDocumentsIndexed": 7},
+    )
+    report = syncer(s3_bucket, agent).sync(
+        tmp_path, wait=True, sleep=lambda _: None, clock=counting_clock()
+    )
+
+    assert report.ingestion is not None
+    assert report.ingestion.documents_indexed == 7
+
+
+def test_absent_statistics_stay_none_not_zero(tmp_path: Path, s3_bucket) -> None:
+    """`None` means Bedrock said nothing; `0` means it indexed nothing. A job
+    still STARTING must not claim it indexed zero documents."""
+    make_corpus(tmp_path)
+    report = syncer(s3_bucket, FakeAgent(["STARTING"])).sync(tmp_path, wait=False)
+
+    assert report.ingestion is not None
+    assert report.ingestion.documents_indexed is None
+
+
+# ── Aurora auto-pause on the INGEST path ────────────────────────────────────
+# `min_capacity = 0` means the cluster is asleep by design, and a sync runs
+# minutes after a build — long past any keep-alive — so StartIngestionJob is
+# very often the call that wakes it. It surfaces as ValidationException, which
+# no generic retry configuration treats as transient. Measured 2026-08-22: the
+# CLI crashed outright, mid-run, *after* the upload had already happened.
+
+
+def auto_paused() -> ClientError:
+    """The real message, verbatim from the 2026-08-22 crash."""
+    return ClientError(
+        {
+            "Error": {
+                "Code": "ValidationException",
+                "Message": (
+                    "The knowledge base storage configuration provided is invalid... "
+                    "The vector database encountered an error while processing the "
+                    "request: The Aurora DB instance db-L3DM7APXX43HCTKXNZMEBRRQCQ is "
+                    "resuming after being auto-paused. Please wait a few seconds and "
+                    "try again. (Service: RdsData, Status Code: 400)"
+                ),
+            }
+        },
+        "StartIngestionJob",
+    )
+
+
+class ColdAgent(FakeAgent):
+    """Refuses the first ``cold`` StartIngestionJob calls the way Aurora does."""
+
+    def __init__(self, statuses: list[str], cold: int = 1, **kwargs: Any) -> None:
+        super().__init__(statuses, **kwargs)
+        self.cold = cold
+        self.refusals = 0
+
+    def start_ingestion_job(self, **kwargs: Any) -> dict[str, Any]:
+        if self.refusals < self.cold:
+            self.refusals += 1
+            raise auto_paused()
+        return super().start_ingestion_job(**kwargs)
+
+
+def test_ingestion_survives_an_aurora_cold_start(tmp_path: Path, s3_bucket) -> None:
+    make_corpus(tmp_path)
+    agent = ColdAgent(["STARTING", "COMPLETE"], cold=1)
+
+    report = syncer(s3_bucket, agent).sync(
+        tmp_path, wait=True, sleep=lambda _: None, clock=counting_clock()
+    )
+
+    assert agent.refusals == 1
+    assert report.ingestion is not None
+    assert report.ingestion.succeeded
+
+
+def test_a_cluster_that_never_wakes_still_raises(tmp_path: Path, s3_bucket) -> None:
+    """Retry, not swallow. Past the budget the operator must see the failure."""
+    make_corpus(tmp_path)
+    agent = ColdAgent(["STARTING", "COMPLETE"], cold=99)
+
+    with pytest.raises(ClientError, match="auto-paused"):
+        CorpusSyncer(
+            BUCKET,
+            knowledge_base_id="kb-1",
+            data_source_id="ds-1",
+            s3_client=s3_bucket,
+            agent_client=agent,
+            max_retries=2,
+            rng=lambda: 0.0,
+        ).sync(tmp_path, wait=False, sleep=lambda _: None)
+
+    assert agent.refusals == 3  # the initial attempt + 2 retries
+
+
+def test_a_non_transient_validation_error_is_not_retried(tmp_path: Path, s3_bucket) -> None:
+    """The auto-pause arm matches on the resume sentence, not on the error code
+    — otherwise a genuinely invalid storage config would be retried four times
+    before reporting a misconfiguration that was never going to fix itself."""
+    make_corpus(tmp_path)
+
+    class Misconfigured(FakeAgent):
+        def __init__(self) -> None:
+            super().__init__([])
+            self.attempts = 0
+
+        def start_ingestion_job(self, **kwargs: Any) -> dict[str, Any]:
+            self.attempts += 1
+            raise ClientError(
+                {"Error": {"Code": "ValidationException", "Message": "dataSourceId not found"}},
+                "StartIngestionJob",
+            )
+
+    agent = Misconfigured()
+    with pytest.raises(ClientError, match="not found"):
+        syncer(s3_bucket, agent).sync(tmp_path, sleep=lambda _: None)
+
+    assert agent.attempts == 1  # failed fast

@@ -1,6 +1,7 @@
 from typing import Any
 
 import pytest
+from botocore.exceptions import ClientError
 from docpipe_core.llm import HEALTH_ASSISTANT_SYSTEM, ChatClient
 from docpipe_core.models import ChatMessage
 from docpipe_core.retrieval import (
@@ -346,3 +347,77 @@ def test_the_default_never_reorders() -> None:
     fake = FakeAgentRuntime(_worst_first())
     passages = KnowledgeBaseClient("kb-123", agent_runtime_client=fake).retrieve("q", rerank=False)
     assert [p.text for p in passages] == ["worst", "middle", "best"]
+
+
+class FlakyAgentRuntime:
+    """Fails the first ``fail_times`` retrieves with ``error``, then succeeds."""
+
+    def __init__(self, error: ClientError, fail_times: int = 1) -> None:
+        self.error = error
+        self.fail_times = fail_times
+        self.attempts = 0
+
+    def retrieve(self, **kwargs: Any) -> dict[str, Any]:
+        self.attempts += 1
+        if self.attempts <= self.fail_times:
+            raise self.error
+        return {"retrievalResults": [kb_result("Recovered after the resume.")]}
+
+
+def _client_error(code: str, message: str) -> ClientError:
+    return ClientError({"Error": {"Code": code, "Message": message}}, "Retrieve")
+
+
+# The exact string Bedrock returns when an Aurora KB at min_capacity=0 wakes up.
+_AUTO_PAUSED = (
+    "The vector database encountered an error while processing the request: "
+    "The Aurora DB instance db-L3DM7APXX43HCTKXNZMEBRRQCQ is resuming after "
+    "being auto-paused. Please wait a few seconds and try again."
+)
+
+
+def test_aurora_auto_pause_resume_is_retried_not_raised() -> None:
+    """The first Retrieve after idle must not fail the caller.
+
+    Aurora at min_capacity = 0 auto-pauses by design, so this is the normal
+    first request of any session, not an edge case. It arrives as a
+    ValidationException — no retryable error *code* — which is why matching on
+    the code alone (retrieval.py had no retry at all until 2026-08-21) failed
+    every cold start on the single-shot path while the agent path survived.
+    """
+    fake = FlakyAgentRuntime(_client_error("ValidationException", _AUTO_PAUSED))
+    slept: list[float] = []
+    client = KnowledgeBaseClient(
+        "kb-aurora", agent_runtime_client=fake, sleep=slept.append, rng=lambda: 0.0
+    )
+
+    passages = client.retrieve("central sensitization", rerank=False)
+
+    assert fake.attempts == 2, "should have retried the resume exactly once"
+    assert [p.text for p in passages] == ["Recovered after the resume."]
+    assert slept == [1.0], "first backoff is 2**0 + jitter"
+
+
+def test_a_validation_error_that_is_not_a_resume_still_raises() -> None:
+    """Only the resume message is retryable — a real ValidationException is a bug."""
+    fake = FlakyAgentRuntime(_client_error("ValidationException", "unknown field 'foo'"))
+    client = KnowledgeBaseClient(
+        "kb-aurora", agent_runtime_client=fake, sleep=lambda _: None, rng=lambda: 0.0
+    )
+
+    with pytest.raises(ClientError):
+        client.retrieve("anything")
+    assert fake.attempts == 1, "must not burn retries on a non-transient error"
+
+
+def test_retries_are_bounded_and_the_last_error_surfaces() -> None:
+    fake = FlakyAgentRuntime(_client_error("ThrottlingException", "slow down"), fail_times=99)
+    slept: list[float] = []
+    client = KnowledgeBaseClient(
+        "kb-1", agent_runtime_client=fake, max_retries=2, sleep=slept.append, rng=lambda: 0.0
+    )
+
+    with pytest.raises(ClientError):
+        client.retrieve("anything")
+    assert fake.attempts == 3, "initial attempt + max_retries"
+    assert slept == [1.0, 2.0]

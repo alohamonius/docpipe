@@ -46,7 +46,7 @@ Ten seconds each. These are filters; hesitation is the failure, not error.
 10. **Embedding dimension is pinned in two places in docpipe. Which, and why?**
     The S3 Vectors index and the KB's `embedding_model_configuration`. Titan v2
     emits 256/512/1024 and an index cannot mix dimensions. *docpipe:
-    `pulumi/components/kb.py:10-14, 77-86, 149-155`.*
+    `infra/components/kb.py:10-14, 77-86, 149-155`.*
 
 ---
 
@@ -131,7 +131,7 @@ This is the core round, and docpipe's strongest material.
 > **Follow-up:** "so when would you migrate?" — when the corpus stops being
 > chunk-final, or when you need the six connectors and agentic multi-hop
 > retrieval more than you need control of chunk boundaries.
-> *docpipe: `pulumi/components/kb.py:167-188`, `FINDINGS.md` 2026-08-13.*
+> *docpipe: `infra/components/kb.py:167-188`, `FINDINGS.md` 2026-08-13.*
 
 **M2.2 — Defend `chunkingStrategy: NONE`. Then tell me why `SEMANTIC` isn't the fix.**
 > Each built chunk opens with a header carrying the ★ evidence scale and the
@@ -141,7 +141,7 @@ This is the core round, and docpipe's strongest material.
 > problem is splitting at all.** That distinction is the whole answer.
 > **Trap:** treating this as a chunk-quality question. It's a
 > provenance-integrity question.
-> *docpipe: `pulumi/components/kb.py:174-185`.*
+> *docpipe: `infra/components/kb.py:174-185`.*
 
 **M2.3 — What breaks if a chunk exceeds the embedding model's token limit?**
 > Titan v2 caps at 8,192 tokens. With `NONE`, one file = one vector, so an
@@ -406,7 +406,7 @@ This is the core round, and docpipe's strongest material.
 >   cleanup).
 > **Senses:** the third one is the deep answer — it's really about **IaC not
 > being transactional**, and every custom provider needing to be idempotent.
-> *docpipe: `FINDINGS.md`; `pulumi/components/s3vectors.py`,
+> *docpipe: `FINDINGS.md`; `infra/components/s3vectors.py`,
 > `invocation_logging.py`.*
 
 **M5.2 — Your KB trust policy has `Condition: StringEquals aws:SourceAccount`. What attack does that stop, and what would be stronger?**
@@ -415,7 +415,7 @@ This is the core round, and docpipe's strongest material.
 > resource. Stronger: `aws:SourceArn` scoped to the specific KB ARN, which
 > docpipe already does on the Bedrock logs **bucket policy** but not on the
 > **trust policies** — a real, nameable asymmetry in your own code.
-> *docpipe: `pulumi/components/kb.py:99-102`, `safety.py:144-150, 174-177`.*
+> *docpipe: `infra/components/kb.py:99-102`, `safety.py:144-150, 174-177`.*
 
 **M5.3 — Your KB role has `"Action": "s3vectors:*"`. Defend it.**
 > Honestly: it's the least-privilege weak point. Defensible because it's scoped
@@ -425,7 +425,7 @@ This is the core round, and docpipe's strongest material.
 > actual calls from CloudTrail, and narrow the policy to them.
 > **Senses:** interviewers aren't testing whether your IAM is perfect. They're
 > testing whether you *know* where it isn't.
-> *docpipe: `pulumi/components/kb.py:128-133`.*
+> *docpipe: `infra/components/kb.py:128-133`.*
 
 **M5.4 — There is no NAT gateway. How does a Lambda in a private subnet call Bedrock?**
 > It can't, without either NAT (~$32/mo idle) or a **PrivateLink interface VPC
@@ -475,7 +475,7 @@ This is the core round, and docpipe's strongest material.
 > separately from your app logs.
 > **Follow-up:** invocation logging captures full prompts and completions, and
 > health content is sensitive. Who can read that bucket, and for how long?
-> *docpipe: `observability.py`; `pulumi/components/safety.py:108-213`.*
+> *docpipe: `observability.py`; `infra/components/safety.py:108-213`.*
 
 **M5.8 — How do you unit-test all of this without spending a cent?**
 > moto for S3/DynamoDB/SQS; dependency-injected fakes for the Bedrock clients
@@ -505,13 +505,13 @@ This is the core round, and docpipe's strongest material.
 > deploy and no rollback point. Production pins a numbered version; DRAFT is for
 > iteration. Versioning the guardrail is also what makes "what policy was in
 > force when this answer was produced?" answerable in an audit.
-> *docpipe: `pulumi/components/safety.py:106`.*
+> *docpipe: `infra/components/safety.py:106`.*
 
 **M6.3 — `PROMPT_ATTACK` is configured with `output_strength: NONE`. Bug or requirement?**
 > Requirement — the filter is input-only and AWS rejects a non-NONE output
 > strength. Knowing it's a platform constraint rather than an oversight is the
 > signal.
-> *docpipe: `pulumi/components/safety.py:80-82`.*
+> *docpipe: `infra/components/safety.py:80-82`.*
 
 **M6.4 — Contextual grounding is set to 0.75 for GROUNDING and RELEVANCE. What is it scoring, and where does it misfire here?**
 > It scores the model's response against the retrieved passages (grounding) and

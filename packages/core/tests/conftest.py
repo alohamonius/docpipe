@@ -45,3 +45,27 @@ def sqs_queue():
         client = boto3.client("sqs", region_name=REGION)
         url = client.create_queue(QueueName="docpipe-jobs")["QueueUrl"]
         yield client, url
+
+
+@pytest.fixture
+def conversations_table():
+    """The conversations table as infra/components/data.py declares it."""
+    with mock_aws():
+        resource = boto3.resource("dynamodb", region_name=REGION)
+        resource.create_table(
+            TableName="docpipe-conversations",
+            KeySchema=[
+                {"AttributeName": "userId", "KeyType": "HASH"},
+                {"AttributeName": "conversationId", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "userId", "AttributeType": "S"},
+                {"AttributeName": "conversationId", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        resource.meta.client.update_time_to_live(
+            TableName="docpipe-conversations",
+            TimeToLiveSpecification={"Enabled": True, "AttributeName": "expiresAt"},
+        )
+        yield resource

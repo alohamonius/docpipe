@@ -3,7 +3,7 @@
 `test_kb_chunking_contract.py` reads the Pulumi source with an AST and proves
 the *code* never asks for a splitter. It says so itself, in its own docstring:
 
-    It still does **not** check what is deployed. `pulumi/components/kb.py` has
+    It still does **not** check what is deployed. `infra/components/kb.py` has
     said `NONE` since `dbc3e8d` while the live data source has said
     `FIXED_SIZE` since 2026-08-12 — this test was green for all of it.
 

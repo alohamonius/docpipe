@@ -25,6 +25,7 @@ import argparse
 import json
 import statistics
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +46,17 @@ def main() -> int:
     parser.add_argument("--k", type=int, default=5)
     parser.add_argument("--search-type", choices=("SEMANTIC", "HYBRID"), default=None)
     parser.add_argument("--semantic-score-is-distance", action="store_true")
+    parser.add_argument("--guardrail-id", default=None)
+    parser.add_argument("--guardrail-version", default="DRAFT")
+    parser.add_argument("--verbatim-first", action="store_true")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="parallel questions; recall is unaffected, but per-question wall"
+        " times are measured under contention — do not compare them to"
+        " sequential runs",
+    )
     parser.add_argument("--limit", type=int, default=None, help="first N questions (smoke test)")
     parser.add_argument("--dry-run", action="store_true", help="allow an unratified key")
     parser.add_argument("--profile", default=PROFILE)
@@ -66,11 +78,15 @@ def main() -> int:
         bedrock_client=session.client("bedrock-runtime"),
         top_k=args.k,
         search_type=args.search_type,
+        guardrail_id=args.guardrail_id,
+        guardrail_version=args.guardrail_version,
+        verbatim_first=args.verbatim_first,
     )
 
     questions = question_set.questions[: args.limit] if args.limit else question_set.questions
-    results: list[dict[str, Any]] = []
-    for i, q in enumerate(questions, 1):
+
+    def score_one(numbered: tuple[int, Any]) -> dict[str, Any]:
+        i, q = numbered
         run = agent.ask(q.question)
         retrievals = [
             [key for p in call.passages if (key := chunk_key_of(p)) is not None]
@@ -83,28 +99,35 @@ def main() -> int:
             if hit_ranks:
                 first_hit_call, rank_at_first_hit = call_no, hit_ranks[0]
                 break
-        results.append(
-            {
-                "id": q.id,
-                "stratum": q.stratum,
-                "question_class": q.question_class,
-                "session_hit": first_hit_call is not None,
-                "first_hit_call": first_hit_call,
-                "rank_at_first_hit": rank_at_first_hit,
-                "tool_calls": len(retrievals),
-                "forbidden_returned": sorted({k_ for k_ in union if k_ in q.must_not_return}),
-                "stop_reason": run.stop_reason,
-                "tokens_in": run.input_tokens,
-                "tokens_out": run.output_tokens,
-                "wall_s": run.wall_s,
-                "queries_retrieved": retrievals,
-            }
-        )
         print(
             f"[{i}/{len(questions)}] {q.id}: hit={first_hit_call is not None} "
             f"calls={len(retrievals)} wall={run.wall_s}s",
             flush=True,
         )
+        return {
+            "id": q.id,
+            "stratum": q.stratum,
+            "question_class": q.question_class,
+            "session_hit": first_hit_call is not None,
+            "first_hit_call": first_hit_call,
+            "rank_at_first_hit": rank_at_first_hit,
+            "tool_calls": len(retrievals),
+            "forbidden_returned": sorted({k_ for k_ in union if k_ in q.must_not_return}),
+            "stop_reason": run.stop_reason,
+            "tokens_in": run.input_tokens,
+            "tokens_out": run.output_tokens,
+            "wall_s": run.wall_s,
+            "queries_retrieved": retrievals,
+        }
+
+    numbered = list(enumerate(questions, 1))
+    if args.workers > 1:
+        # KbAgent.ask touches only locals and thread-safe boto3 clients, so one
+        # agent serves all workers. pool.map preserves question order.
+        with ThreadPoolExecutor(max_workers=args.workers) as pool:
+            results = list(pool.map(score_one, numbered))
+    else:
+        results = [score_one(pair) for pair in numbered]
 
     scored = [r for r in results if r["question_class"] != "not-covered"]
     gap = [r for r in results if r["question_class"] == "not-covered"]
@@ -118,6 +141,13 @@ def main() -> int:
         "search_type": args.search_type,
         "semantic_score_is_distance": args.semantic_score_is_distance,
         "rerank": False,
+        "verbatim_first": args.verbatim_first,
+        "workers": args.workers,
+        "guardrail_id": args.guardrail_id,
+        "guardrail_version": args.guardrail_version if args.guardrail_id else None,
+        "guardrail_interventions": [
+            r["id"] for r in results if r["stop_reason"] == "guardrail_intervened"
+        ],
         "knowledge_base_id": args.kb_id,
         "question_set": {
             "version": question_set.version,

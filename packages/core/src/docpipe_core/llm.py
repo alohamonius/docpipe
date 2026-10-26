@@ -116,7 +116,7 @@ class _ConverseClient:
             kwargs["system"] = [{"text": system}]
         # A provisioned guardrail enforces nothing on its own — it applies only
         # to calls that name it. Absent this block the Bedrock Guardrail in
-        # `pulumi/components/safety.py` is decoration, and the non-diagnostic
+        # `infra/components/safety.py` is decoration, and the non-diagnostic
         # stance rests entirely on a system prompt that prompt injection can
         # argue with. The role needs `bedrock:ApplyGuardrail` on the ARN.
         if self._guardrail_id:

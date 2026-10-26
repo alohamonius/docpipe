@@ -4,6 +4,7 @@ Dated entries, newest last. Staging ground — once a cluster stabilises, promot
 it into real rules (README, PLAN, a test).
 
 ## 2026-08-13 — Bedrock access day: model + platform facts
+section: bedrock
 
 - **Bedrock Agents "Classic" is closed to new customers** (maintenance mode).
   This account got Bedrock in Aug 2026 → we cannot build on it. AWS points new
@@ -22,9 +23,10 @@ it into real rules (README, PLAN, a test).
   rules it out as an agent orchestrator.
 
 ## 2026-08-13 — Pulumi S3-backend + dynamic-provider gotchas
+section: infra
 
 Hit while bringing the dev stack up for the first time (all fixed in
-`pulumi/components/`):
+`infra/components/`):
 
 - **`pulumi login s3://bucket` 301s unless the URL is region-qualified.**
   Working form: `pulumi login
@@ -48,6 +50,7 @@ Net result: `pulumi up` → 53 resources, dev stack fully up (KB `SJQAFQXPH7`,
 guardrail `pjpeeu9hf68a`, invocation logging active).
 
 ## 2026-08-13 — the corpus was already built, and we were about to ingest it wrong
+section: corpus
 
 Reviewing health.studio's KB before wiring Phase 3. Every item below was found by
 inspection, not by a failed ingestion — nothing had been synced yet, which is the
@@ -102,6 +105,7 @@ Sizing checks, for the record — both fit, neither with much room:
   confirmed against a real ingestion yet.
 
 ## 2026-08-13 — the managed layer moved under us
+section: bedrock
 
 Found while researching `docs/interview/`. Both changes shipped **before** the
 corresponding docpipe decisions were made, and neither was known when PLAN.md's
@@ -115,7 +119,7 @@ default into a choice that now has to be argued.
   Drive, OneDrive, Web Crawler), hybrid search, document ranking, and agentic
   retrieval for multi-hop queries. Evidence:
   <https://aws.amazon.com/about-aws/whats-new/2026/06/amazon-bedrock-managed-knowledge-base/>
-  **Consequence:** `pulumi/components/kb.py` builds the *custom* KB (own S3
+  **Consequence:** `infra/components/kb.py` builds the *custom* KB (own S3
   Vectors index, own chunking config) that Managed KB is designed to replace,
   and "build a RAG pipeline on Bedrock" now defaults to Managed KB. The custom
   KB is still correct **here** for one specific reason: the corpus is
@@ -146,13 +150,14 @@ default into a choice that now has to be argued.
   query, so caching would only ever hit the preamble, not the bulk.
 
 ## 2026-08-13 — Aurora cold-resume accepted as a UX problem, not a cost problem
+section: aurora
 
 Decision taken today: **we want Aurora**, and the resume latency is accepted
 rather than designed around. Recording the reasoning because the cost story in
 `README.md` was written on the opposite assumption and now needs to move.
 
 - **The ~15s is a cluster resume, not network latency.** Aurora Serverless v2
-  with `min_capacity = 0` (`pulumi/components/data.py:156`, default
+  with `min_capacity = 0` (`infra/components/data.py:156`, default
   `aurora_min_acu: float = 0`) auto-pauses after an inactivity window; the next
   connection resumes it before serving. AWS's published figure is **~15 seconds**
   from 0 ACU, with auto-pause after ~5 min idle (configurable). **Neither number
@@ -177,6 +182,7 @@ rather than designed around. Recording the reasoning because the cost story in
   Measure before committing: `enable_aurora=true`, time a cold query, tear down.
 
 ## 2026-08-13 — three retrieval levers we provision nothing for
+section: retrieval
 
 Found by introspecting the live API shapes, not from docs. All three are
 supported by the account today and used by none of our code.
@@ -196,6 +202,7 @@ supported by the account today and used by none of our code.
   `citationCount`, `safetyCritical` — see `retrieval.py:30-36`).
 
 ## 2026-08-13 — the corpus size variance is one-sided, and it is the graph half
+section: corpus
 
 Measured over `health.studio/build/kb` (n=383, `*.md`, whitespace word count):
 
@@ -218,6 +225,7 @@ on internal headings, as it already does for prose — prose chunks carry a
 answer is not "split differently", it is "emit smaller nodes".
 
 ## 2026-08-13 — Bedrock KB rejects Cohere Embed v4, under every storage type
+section: bedrock
 
 Measured, not read. `CreateKnowledgeBase` called with a deliberately bogus
 storage target so nothing could be created, varying only the embedding model.
@@ -248,6 +256,7 @@ ValidationException: Knowledge Base type does not support cohere.embed-v4:0 embe
   live option. It is not, and no `pulumi up` should carry it.
 
 ## 2026-08-13 — Aurora at `min_capacity = 0` IS supported by Bedrock KB
+section: aurora
 
 **Corrects an earlier caution in this file.** The worry that Bedrock KB + Aurora
 would force min ACU > 0 (because retrieval hits the cluster via the RDS Data API)
@@ -259,7 +268,7 @@ Real requirements, from the Aurora user guide — more than we had assumed:
 
 - PostgreSQL **16.1+** (our `aurora_engine_version` default 16.6 qualifies).
 - **pgvector ≥ 0.5.0** — `CREATE EXTENSION IF NOT EXISTS vector;`
-- **RDS Data API must be enabled.** `pulumi/components/data.py` does **not** set
+- **RDS Data API must be enabled.** `infra/components/data.py` does **not** set
   this today (`enable_http_endpoint`) — a concrete gap before Aurora can back a KB.
 - A dedicated `bedrock_user` role + its own Secrets Manager secret. Our cluster
   uses `manage_master_user_password=True`, which is the *master* secret, not this.
@@ -285,6 +294,7 @@ CREATE INDEX ON bedrock_integration.bedrock_kb USING gin (custom_metadata);
   queryable in SQL.
 
 ## 2026-08-13 — an untracked Managed KB is live in the account
+section: bedrock
 
 `list_knowledge_bases` returns **two**, not one:
 
@@ -304,6 +314,7 @@ Quick Create flow left no database behind. Decide whether to keep it as a
 Managed-KB comparison point or delete it — but it should not stay unowned.
 
 ## 2026-08-14 — the corpus grew a generation, and the chunking rule became a test
+section: corpus
 
 Two things, both measured against `build/kb/` from a clean `pnpm kb:build` on
 2026-08-14.
@@ -331,7 +342,7 @@ Two things, both measured against `build/kb/` from a clean `pnpm kb:build` on
   'chunk_overlap_percentage']` — then green on `dbc3e8d`. A test that was never
   red proves nothing.
 - **The check reads the AST, not the deployed stack, and that is deliberate.**
-  `pulumi-aws` lives in `pulumi/venv`, not the uv workspace, so a Pulumi-mock
+  `pulumi-aws` lives in `infra/venv`, not the uv workspace, so a Pulumi-mock
   test would make the contract depend on an optional install — the same
   "enforced by nothing, in practice" failure it exists to end. Parsing also
   ignores comments, which is required here: the component's comment names
@@ -342,6 +353,7 @@ Two things, both measured against `build/kb/` from a clean `pnpm kb:build` on
   written.
 
 ## 2026-08-14 — the app stays on Hetzner, and the VPC is not the seam
+section: infra
 
 Asked whether the whole system could move onto AWS, since running the Next.js
 app on Hetzner and the AI backend on AWS felt like an arbitrary split. It can.
@@ -366,7 +378,7 @@ It should not, and the reason is arithmetic.
   not talk to Aurora: **Bedrock** does. The app's own Postgres is its own DB.
   So the integration is **HTTPS + SigV4 to API Gateway** — no tunnel, no NAT
   (docpipe deliberately has none, ~$33/mo), $0 of networking.
-- **The seam does not exist yet.** `pulumi/__main__.py` wires network, data,
+- **The seam does not exist yet.** `infra/__main__.py` wires network, data,
   messaging, kb, iam, safety — 53 resources, and **no Lambda and no API
   Gateway**; the only Lambda artifact is an exported role ARN. So this is a
   choice about a thing not yet built, not a migration.
@@ -389,6 +401,7 @@ app calls the Anthropic API directly while docpipe uses Bedrock. That split is
 untouched here and should be decided on its own merits.
 
 ## 2026-08-14 — the guardrail was decoration, and GLM lost on grounds other than the numbers
+section: guardrail
 
 - **A provisioned Bedrock guardrail enforces nothing.** `safety.py` created one
   and computed `self.guardrail_arn`; **nothing read it** — not exported in
@@ -434,17 +447,18 @@ untouched here and should be decided on its own merits.
   token-by-token UI needs a Lambda Function URL with `RESPONSE_STREAM`.
 
 ## 2026-08-14 — Aurora has a fifth gap, and the docs disagreed about whether it exists
+section: aurora
 
 Triggered by a plain question — "why was Aurora rejected?" — whose premise was
 wrong. Aurora was never rejected; it is `PLAN.md`'s stated primary vector store.
 Reading the code to answer properly turned up a gap the plan did not list.
 
 - **The Aurora component produces no outputs, so nothing can consume it.**
-  `pulumi/components/data.py:142-171` creates the cluster and its instance into
+  `infra/components/data.py:142-171` creates the cluster and its instance into
   a *local* `cluster` variable: no `self.aurora_*` attributes are set, and
   `register_outputs({})` is empty. Bedrock KB's `rdsConfiguration` needs
   `resourceArn`, `credentialsSecretArn`, `databaseName`, `tableName` and a
-  `fieldMapping`; `pulumi/__main__.py` can read **none** of them, and
+  `fieldMapping`; `infra/__main__.py` can read **none** of them, and
   `components/kb.py` never mentions Aurora at all. This is prior to the four
   gaps recorded on 2026-08-13 (`enable_http_endpoint`, `bedrock_user`, the
   table + three indexes, and — also newly listed — the second KB resource
@@ -509,6 +523,7 @@ the clearest possible demonstration of why the AST test cannot stand in for a
 so the pre-flight's premise holds and every corpus-shape decision is still free.
 
 ## 2026-08-14 — the bibliography fix is unshippable as planned, and it is not urgent
+section: corpus
 
 Correcting `f1a85e3` (*"the oversized-chunk fix is not a split, it is the
 bibliography"*) and the PLAN.md step-1 it wrote. The **measurement** in that
@@ -539,7 +554,7 @@ reader receive. That is the same bare-evidence failure the `NONE` chunking rule
 exists to prevent, arriving through the sidecar instead of through a splitter.
 
 **BLOCKER B — `includeForEmbedding: false` does not buy non-filterable.**
-`pulumi/components/kb.py:80-89` constructs `S3VectorsIndex` with **no
+`infra/components/kb.py:80-89` constructs `S3VectorsIndex` with **no
 `metadataConfiguration` block at all**, so no key is declared non-filterable and
 the 2 KB filterable cap applies to every attribute. The largest bibliography is
 ~1,832w ≈ 12 KB — it cannot fit. `includeForEmbedding` and filterability are
@@ -566,6 +581,7 @@ corpus as the control → *then* the bibliography move, with a signed delta
 against that control. The corpus reshape is no longer step 1.
 
 ## 2026-08-14 — the syncer could not delete, and the bucket is a measured zero
+section: corpus
 
 `CorpusSyncer` uploaded and skipped; it had no `delete_object` and no
 remote-minus-local diff. Its own docstring leaned on Bedrock re-embedding
@@ -629,6 +645,7 @@ Red-first, on this branch: the rename test failed on HEAD with
 still there …]` — 11 failed / 12 passed. After the fix, 68/68 repo-wide.
 
 ## 2026-08-16 — Pre-ingest review: the corpus is clean, the destination is not
+section: corpus
 
 Review of the data staged for the first ingest (`health.studio/build/kb`, 383
 chunks). Every number here was measured today against the built corpus and the
@@ -715,7 +732,7 @@ $ uv run --with boto3 python -c "import boto3; print(sorted(boto3.client('s3vect
 ['CreateIndex','CreateVectorBucket','DeleteIndex','DeleteVectorBucket',…,'PutVectors','QueryVectors',…]
 ```
 
-**Trap in the way of that fix:** `pulumi/components/s3vectors.py:19` lists the
+**Trap in the way of that fix:** `infra/components/s3vectors.py:19` lists the
 replace-triggering inputs in `_KEYS`, and the provider defines no `update()`.
 Adding `non_filterable_metadata_keys` to the resource's props **without** adding
 it to `_KEYS` makes `diff()` return `changes=False` — Pulumi reports "unchanged"
@@ -974,6 +991,7 @@ gate, not the fix, is what keeps this from recurring. It converts a silent
 total loss discovered three steps downstream into a local build error.
 
 ## 2026-08-16 — the baseline: 0.7879, and the exit code is the corpus's known defect being measured, not a bug
+section: retrieval
 
 First scored run against the live KB (`JDNNGSU1JT`, job `UAPFGFPWDZ`'s 383
 vectors, ratified key, k=5, `min_evidence: null`). The full signed report is
@@ -1039,6 +1057,7 @@ not-covered class. Each is now a signed delta against 0.7879, which was the
 entire point of running the baseline first.
 
 ## 2026-08-16 — miss-rank probe: 7 of the 9 baseline misses sit at rank 7–19
+section: retrieval
 
 The baseline says *what* missed; it can't say *how far* a miss was. One
 read-only probe answers that: re-run the 9 missed questions (misses = expected
@@ -1085,6 +1104,7 @@ the 7 near-misses, corpus work (bibliography move on Aurora, phrasing fixes)
 for the 2 deep ones. Probe artifacts: `.scratch/kb-miss-rank-probe.{py,json}`.
 
 ## 2026-08-17 — the live stack is now asserted, and it was already 41 keys stale
+section: infra
 
 Two things came out of `05-chunk-shape`'s first live round-trip attempt, and the
 second one was not what anybody was looking for.
@@ -1131,6 +1151,7 @@ The detector already existed and nobody was running it: `plan_prune` /
 habit — dry-run the sync after any health.studio KB merge, not only before an
 ingest.
 ## 2026-08-17 — the reranker, measured: +0.1139 MRR, four rescues, and two questions it broke
+section: retrieval
 
 `retrieve(rerank=True, rerank_pool=25)` was scored against the live KB on the
 same 66-question held-out set, the same index (`JDNNGSU1JT`, job `QPOVWZN9JY`,
@@ -1192,6 +1213,7 @@ byte-identical. Whether to turn it on is health.studio's call, made against thes
 numbers.
 
 ## 2026-08-17 — `make kb-eval RERANK=--rerank` cannot run: 3 requests per minute, not adjustable
+section: retrieval
 
 The reranked eval fails with `ThrottlingException` on `Retrieve` — under
 botocore's default retries, and again under `AWS_RETRY_MODE=adaptive` with
@@ -1222,6 +1244,7 @@ baseline". A pass that budgets it the other way times out and reports that model
 access is broken, when it is not.
 
 ## 2026-08-18 — V3.2 drives a multi-search tool loop unprompted: 3 retrievals, self-set evidence floor, end_turn at call 4
+section: agentic
 
 The 2026-08 smoke test proved one `tool_use` round; this ran the whole loop.
 A hand-written Converse loop (`.scratch/converse-tool-loop.py` — no Strands,
@@ -1248,6 +1271,7 @@ the neck, and how strong is the evidence?":
   3 req/min account-level Cohere quota (see 2026-08-17 entry) on its own.
 
 ## 2026-08-19 — corpus is now 496 chunks; 72 are bibliography-only and filterable
+section: corpus
 
 Cross-ref: measured in health.studio (owner of the exporter), recorded at
 `specs/040-chunk-shape/findings.md` there. What matters on the docpipe side:
@@ -1260,6 +1284,7 @@ are stale. Nerves backlog for future sessions:
 health.studio `specs/041-nerve-registry/bugs.md`.
 
 ## 2026-08-19 — the case for Aurora consolidated: three product features, not one benchmark
+section: aurora
 
 What accumulated today, recorded so the re-ruling moment has it in one place.
 The 2026-08-16 ruling (ship on S3 Vectors; Aurora + benchmark deferred) stands
@@ -1299,6 +1324,7 @@ primary"); whether it jumps ahead of shipping is a time allocation, and the
 ruling that decides it should cite this entry either way.
 
 ## 2026-08-20 — the three Aurora applies ran; four first-run bugs, all four now fixed in code
+section: infra
 
 PLAN.md's warning ("the Aurora branch in `data.py` has never executed — treat
 the first apply as a test") paid out four times — one bug per run, each masking
@@ -1358,6 +1384,7 @@ long one — the same one-error-per-apply cadence as the 2026-08-13 first
 deploy.
 
 ## 2026-08-20 — first Aurora ingest: 496/496, and the two KBs no longer hold the same corpus
+section: aurora
 
 Job `B6RTYKM3K9` on KB `A44CISMRAM`: scanned 496, indexed 490, **failed 6**
 with only `"The server encountered an internal error"` — no document names, no
@@ -1379,6 +1406,7 @@ been re-ingested on the 496 corpus before today. The stores were comparable
 all along; the benchmark ran the same day (next entry).
 
 ## 2026-08-20 — first cross-store benchmark: same recall, Aurora semantic ranks far worse, hybrid buys the rank back
+section: retrieval
 
 Four runs, one day, both KBs holding the byte-identical 496-chunk corpus,
 answer key v2 (66 questions, ratified 2026-08-17, every expected and forbidden
@@ -1421,6 +1449,7 @@ confabulation magnets (abstention 0.0, n=5) — unchanged from the known gap-04
 class, and hoisted `forbidden_violations` is doing its job.
 
 ## 2026-08-20 — "wtf with aurora" solved: Bedrock's RDS path returns cosine DISTANCE as score and sorts worst-first
+section: aurora
 
 The MRR anomaly from the benchmark entry above is a Bedrock service bug on the
 RDS storage path, pinned to six decimal places:
@@ -1469,6 +1498,7 @@ separately below. Instrument: `.scratch/kb_latency.py` (gitignored; promote
 to `scripts/` if it should run in a gate).
 
 ## 2026-08-20 — Aurora cold start on the Retrieve path: 1.32 s, not ~15 s
+section: aurora
 
 Measured properly, with the pause verified rather than assumed: CloudWatch
 `ServerlessDatabaseCapacity` shows the cluster at **0.0 ACU from 18:42 to
@@ -1503,6 +1533,7 @@ contract is "retry that one ValidationException message", now implemented in
 needs the same handling (`retrieval.py` does not retry; its callers must).
 
 ## 2026-08-20 — agentic rows land: the loop beats every single-shot row, and Aurora agentic hits 0.9508
+section: agentic
 
 `scripts/kb_agentic_eval.py`, V3.2 driving `search_kb` (its own reformulations
 and `min_evidence` choices, ≤5 iterations, k=5 per call, rerank OFF), scored
@@ -1542,6 +1573,7 @@ The Aurora HYBRID agentic run was stopped externally at question 37/66 —
 no report written; rerun pending (~10 min).
 
 ## 2026-08-20 — six agentic runs: the 0.9508 was a high roll, hybrid is flat, and the union hits 61/61
+section: agentic
 
 Two runs of each agentic config (V3.2, temp 0.3), completing the matrix and
 answering the variance question the first entry left open:
@@ -1574,3 +1606,1090 @@ toolUse blocks in one message** (parallel searches), and Converse demands all
 their toolResults in a single user message — one-message-per-result fails
 with "Expected toolResult blocks at messages.N.content". The 2026-08-18
 prototype has the same latent bug; fixed in `kb_agentic_eval.py` only.
+
+## 2026-08-21 — `pulumi/` → `infra/`: the rename is safe for state, and it exposed an isort misclassification that had been silently wrong all along
+section: infra
+
+Renamed the IaC directory so all four top-level directories are named for their
+role (`packages` / `services` / `scripts` / `infra`) rather than three roles
+plus one tool. Notes worth keeping, because two of the three scary parts were
+not real and the one real cost was somewhere nobody looks.
+
+- **Stack state does NOT move with the directory.** Pulumi keys state on the
+  project name in `Pulumi.yaml` (`name: docpipe`), not on the containing path.
+  Verified after the move: `pulumi -C infra stack output` returns all 22
+  outputs, guardrail `pjpeeu9hf68a`, unchanged. The S3 backend key is likewise
+  untouched — `s3://docpipe-tfstate-733866507398/pulumi` → the `pulumi` there
+  is an **S3 key prefix**, not a directory, and must never be renamed to match.
+
+- **What DOES break is the local selected-stack pointer**, and it fails with a
+  misleading message: `error: no stack selected`. Pulumi stores that pointer in
+  `~/.pulumi/workspaces/docpipe-<sha1 of the Pulumi.yaml path>-workspace.json`.
+  The path is in the hash, so after any move Pulumi looks for a filename that
+  does not exist and reports it as "nothing selected" rather than "moved".
+  Fix is one `pulumi stack select dev`. Machine-local: every other developer
+  and CI hits it once, and nothing in the repo can pre-empt it.
+
+- **A uv-created venv survives being moved.** Expected `infra/venv` to need
+  rebuilding from baked-in absolute paths; it did not. `sys.prefix` is derived
+  from the executable's own location, so `import pulumi_aws` worked
+  immediately post-move. (It also has no `pip`, so there is no stale shebang
+  to break — uv omits it by default.)
+
+- **The find that justifies the rename on its own:** the directory name was
+  corrupting ruff's isort. Ruff infers first-party membership by matching a
+  module name against directories under `src` (default: project root), so a
+  top-level directory named `pulumi/` made `import pulumi` — the **SDK** —
+  resolve as *first-party*. Every import block under the old `pulumi/` was
+  sorted on that false premise, and CI's `infra` job was green on all of it.
+  Renaming produced `I001` in all 10 files at once; the imports had not
+  changed, the classification had. Reduced to a probe: identical file, identical
+  ruff config, the only variable an **empty** sibling directory —
+
+  | sibling `pulumi/` dir | `uvx ruff check` |
+  |---|---|
+  | absent | `I001` — `pulumi` sorts as third-party |
+  | present | `All checks passed!` |
+
+  Generalised: **any top-level directory sharing a name with a third-party
+  dependency silently reclassifies that dependency as first-party for isort.**
+  Worth remembering before naming a directory `boto3/`, `pytest/` or similar.
+
+- **Two references a `pulumi/` grep does not find**, both of which fail *soft*
+  rather than loudly: `services/kb_sync/sync.py:53`
+  (`_DEFAULT_PULUMI_DIR = parents[2] / "pulumi"`) and `scripts/status.py:372`
+  (`count("__main__.py", "pulumi")`), plus `aurora_bootstrap.py`'s `cwd="pulumi"`.
+  `_pulumi_outputs` swallows `OSError` and returns `{}`, so a missed rename
+  there does not crash — it quietly drops the stack-output fallback and starts
+  demanding `--bucket`. Grep for the bare quoted directory name, not just the
+  path prefix with a slash.
+
+- **Historical ambiguity, stated once so it is not rediscovered:** `infra/` was
+  the *Terraform* tree until it was deleted in `825aa4b`. So in commits, docs
+  and findings, **`infra/` before 2026-08-21 means Terraform; after it means
+  Pulumi.** `git log --follow` traverses the rename on every file.
+
+Path references in dated entries above were rewritten `pulumi/…` → `infra/…`
+rather than left to rot. The claims are unchanged and the files are the same
+files; a finding whose `file:line` no longer resolves is not evidence.
+
+Also corrected in the same pass, all stale rather than wrong-at-the-time:
+`services/kb_sync/README.md` told operators to run `terraform output` in
+`infra/envs/dev` (deleted in `825aa4b`; the code has called
+`pulumi stack output` for months), `services/worker/README.md` hard-committed
+to EKS/Helm/IRSA and "Phase 4" when PLAN.md Phase 5 has compute as an open
+decision with **Lambda as the default recommendation** and EKS discouraged at
+~$73/mo, and `PLAN.md`'s Phase 6 checklist still asked for a
+`terraform destroy` clean-pass.
+
+## 2026-08-21 — PLAN's "locked decisions" had drifted 5 days behind the deployed stack, and the drift was invisible because the phase sections were right
+section: infra
+
+Reconciling PLAN.md against the live stack turned up a specific failure mode
+worth naming, because it will recur.
+
+**The stale claims were all in the summary layer, not the detail layer.**
+Phase 2 and Phase 5b were accurate — Phase 2 already said *"Done 2026-08-20:
+cluster `docpipe-dev-aurora`, KB `A44CISMRAM` ACTIVE, ds `H8PN3JBXPN`"*, and
+Phase 5b carried the full benchmark table. Meanwhile the **Locked decisions**
+block at the top still read **"Build status: not built. Only the S3 Vectors KB
+exists today; the dev stack sets `enableAurora: 'false'`"**, and *Current
+priority* still deferred Aurora behind shipping per the 2026-08-16 ruling.
+
+Verified against reality instead of against the document
+(`AWS_PROFILE=docpipe`, 2026-08-21):
+
+| claim in the summary layer | actual |
+|---|---|
+| `enableAurora: "false"` | `"true"`, and `enableAuroraKb: "true"` — `Pulumi.dev.yaml:17-18` |
+| "not built" | cluster **available**, engine 16.14, min 0 / max 1 ACU, Data API on |
+| "only the S3 Vectors KB exists" | two KBs: `JDNNGSU1JT` (S3) and `A44CISMRAM` (Aurora) |
+| "~15s resume … hidden by pre-warming" | **1.32 s** measured on the Retrieve path (2026-08-20) |
+| corpus "383 chunk-final files" | **496** since the 2026-08-19 heading split |
+
+**Why nobody noticed:** each phase section was updated *in place* by the work
+that completed it, which is exactly right — but nothing updates a summary
+written months earlier that restates the same facts. **A document that states a
+fact twice will drift at whichever copy is furthest from the work.** The
+mitigation used here: the top block now carries a dated verification line and
+points at Phase 5b rather than re-deciding, and `Current priority` got a
+`⚠️ SUPERSEDED` marker in the *heading* — the correction previously would have
+been 40 lines below the stale instruction.
+
+**Retracted in place, not rewritten:** the 2026-08-14 and 2026-08-16 ruling
+blocks are kept verbatim — they record *why* the order was chosen — with a
+2026-08-20/21 "Overtaken by events" block appended. Same for
+`docs/kb-data-status.md`: its `160 of 383` / `172 of 383` histograms are left
+as measured, because they are a point-in-time analysis and rewriting the
+numerators would falsify it; only its banner now says the corpus is 496.
+
+**The substantive finding hiding under the stale status**, now promoted into
+the decision block: the benchmark the deferral was protecting has *already
+reported*, and it dissolved the question it was asked to settle. Recall
+identical across stores (0.7879), MRR within noise (0.5634 / 0.5646), agentic
+0.89–0.95 on either store in any mode. **The retrieval loop is the effect; the
+store is not.** So "Aurora vs S3 Vectors as primary" is no longer a locked
+decision awaiting evidence — it is an open question whose evidence came back
+"mostly doesn't matter", leaving warm latency (~2×) and the Aurora-only
+exhibits as the real differentiators. What remains in Phase 5b is the $ column,
+the `ef_search` sweep, and the verbatim-then-reformulate run — not more
+store-vs-store.
+
+Cost line corrected too: the README's "nothing deployed today has a standing
+cost" stopped being true the moment Aurora came on. `min_capacity = 0` pauses
+ACU billing but not storage or backup — **~$0.12/mo**, not $0. (Cost Explorer
+month-to-date still rounds to $0 across every service, but the cluster is two
+days old and CE lags; the design figure is the one to plan against.)
+
+## 2026-08-21 — building the playground found two live defects: single-shot never retried Aurora's auto-pause, and the agentic path applies no guardrail
+section: agentic
+
+The playground (PLAN Phase 5b) is a thin shell, so everything below was already
+true of the shipping code — it just had no operator-facing surface to show it.
+
+**1. `retrieval.py` had no retry at all, so every Aurora cold start failed.**
+Reproduced on the first real Aurora ask:
+
+```
+ValidationException: ... The Aurora DB instance db-L3DM7APXX43HCTKXNZMEBRRQCQ
+is resuming after being auto-paused. Please wait a few seconds and try again.
+```
+
+The trap is that this arrives as a **`ValidationException`** — *no retryable
+error code* — so any handler matching on codes alone misses it. `agent.py:92`
+already had the string match, added when the agentic eval hit it; `retrieval.py`
+had nothing. Net effect: **on Aurora the agentic path survived a cold start and
+the single-shot path did not.** And since the cluster runs `min_capacity = 0` by
+design, "cold" is not an edge case — it is the first question of every session.
+Phase 3's Lambda is the same single-shot shape, so it would have shipped with it.
+
+Fixed by moving the predicate to `retrieval.py` as `is_retryable` (the layer
+that actually touches the paused database; `agent.py` already imports from it,
+so the direction is right) and giving `KnowledgeBaseClient.retrieve` the same
+jittered backoff `agent.py` uses. `agent.py` now imports the one definition.
+Covered by three tests in `test_retrieval.py`, including that a
+*non*-resume `ValidationException` still raises on the first attempt rather
+than burning four retries on a genuine bug.
+
+**2. `KbAgent` applies no guardrail — `agent.py` contains zero references to
+one.** `llm.py:122-126` passes `guardrailConfig` on every Converse call, and its
+own comment states the stakes: *"absent this block the Bedrock Guardrail in
+`infra/components/safety.py` is decoration, and the non-diagnostic stance rests
+entirely on a system prompt that prompt injection can argue with."* That is
+exactly the agentic path's situation today — on health content, and on the path
+PLAN says the agent ships on in Phase 3.
+
+**Deliberately not fixed in the same pass**, because the fix is not free: adding
+a guardrail to `KbAgent` changes what the model receives, so it would invalidate
+the six agentic runs from 2026-08-20 that the Phase 5b matrix rests on. Whether
+to re-measure or to ship guardrailed-and-unmeasured is a ruling, not a lint fix.
+Flagged in the playground UI per-answer so nobody demos the agentic path
+believing the guardrail is on.
+
+**3. Minor, same family:** `agent.py:217` hardcodes `rerank=False` on its
+tool-side retrieve, so `rerank` is a single-shot-only control. The playground
+says so rather than showing a toggle that does nothing.
+
+**Also observed, not a defect:** the agent hit its 5-iteration bound on *"which
+muscles refer pain to the shoulder?"* — five reformulated searches, 10,095 input
+tokens, and **an empty answer**, because `agent.py` only assigns `answer` when
+the model stops asking for tools. `AgentSession.hit_iteration_bound` reports it
+honestly; the failure mode is that a caller rendering `.answer` blindly shows a
+blank. Worth knowing before Phase 3 puts this behind an API.
+
+Verified working end-to-end while finding the above: single-shot on both stores,
+agentic, HYBRID on Aurora (scores correctly descending — the distance-inversion
+sort is rightly skipped there), multi-turn history resolving a pronoun across
+turns, guardrail applied and reporting `guardrail_intervened` on the single-shot
+path. Warm latency ~5 s single-shot, ~18 s for a five-call agentic loop.
+
+## 2026-08-21 — the corpus was already a graph, so Graph RAG needed a parser, not a database — and Neptune priced at ~$350/mo floor
+section: corpus
+
+Asked to add Graph RAG. Two candidate rungs in PLAN Phase 5b; both got
+investigated before anything was built, and the answer inverted the expected
+order of difficulty.
+
+**Rung (b), Neptune Analytics, priced via the Price List API (us-east-1):
+$0.03 per m-NCU-hour.**
+
+| tier | running | stopped |
+|---|---|---|
+| 16 m-NCU (smallest) | $0.48/hr ≈ **$350/mo** | $0.048/hr ≈ $35/mo |
+| 128 m-NCU | $3.84/hr ≈ **$2,765/mo** | $0.384/hr |
+
+**There is no scale-to-zero — a stopped graph still bills 10%.** Against
+Aurora's ~$0.12/mo and S3 Vectors' ~$0, that is the whole story: fine as a
+create→measure→destroy exhibit (~$1.50 for three hours at 16 m-NCU), ruinous
+if anyone forgets to destroy it. Two further blockers found while pricing:
+graph construction supports only Claude 3 Haiku / Haiku 4.5 / Nova — which
+**breaks the DeepSeek-only decision** — and with Quick create, Bedrock picks
+the graph size.
+
+**The decisive objection is not cost, though.** Bedrock GraphRAG builds its own
+graph by running an LLM over the chunks (`CHUNK_ENTITY_EXTRACTION`) to extract
+entities and relationships. Every open-source alternative (Microsoft GraphRAG,
+LightRAG, nano-graphrag) does the same thing — that inference *is* their
+indexing pipeline. Pointed at this corpus they would all discard hand-curated,
+`[VERIFIED]`, PubMed-checked, individually-graded edges and replace them with
+guesses. On health content that is a regression, not a feature.
+
+**Because the corpus already is the graph.** Measured on the deployed corpus:
+
+- **Six fields declare a node id** — `Connection group id` 245, `Structure id`
+  31, `Chain code` 11, `Nerve code` 8, `Referral source id` 5, `Joint id` 1 —
+  addressing 301 of 304 graph chunks. Matched generically, so a seventh kind
+  indexes itself.
+- **247 edges** across four sections: `in_chain` 84, `has_member` 84 (the same
+  chain edges from the other end — a free consistency check), `innervated_by`
+  56, `supplies` 23. **224 carry a star grade, 56 carry `[VERIFIED]`.**
+- **The whole index is 106 KB of JSON.** That is the number that kills every
+  "host a graph service" plan, including the Lambda one: 106 KB is a dict.
+
+**What is NOT parseable, stated so nobody re-litigates it.** Section *presence*
+is not the same as parseable edges — a mistake I made first time round by
+counting headings. `Key clinical connections` (132 files) is narrative prose
+(*"Part of the FFL bridge — right pec major → rectus abdominis → left adductor
+longus"*), and `Functional relationships` (117) names structures in prose
+rather than by id. Only bullets carrying a backtick id resolve. Those two
+sections are deliberately left alone: an inferred edge sitting next to a
+`[VERIFIED]` one, indistinguishable downstream, is worse than no edge.
+
+**A silent-failure class worth remembering.** Chain codes are UPPERCASE
+(`FFL`, `SFL`, `DFL`). A lowercase-only id pattern parsed **zero** `in_chain`
+edges across all 62 files carrying that section — no exception, no warning,
+just a relation that was quietly always empty, and a `build_report` that
+looked plausible. Fixing it took edges from 107 → 247. `make graph-index` now
+prints per-relation counts and warns on any relation at zero, and
+`test_uppercase_chain_codes_resolve` pins it.
+
+**The index must be built from the DEPLOYED corpus, not the local one.** They
+differ by 75 chunks — `../health.studio/build/kb` carries 379 graph chunks
+against 304 ingested, almost all of it the nerve registry (52 local vs 8
+live). Indexing the local tree mints hops that `Retrieve` cannot answer:
+expansion would *look* richer while retrieving less, which is the worst
+possible failure for a measurement. `make graph-index` therefore defaults to
+`s3://<kb_source_bucket>/corpus` and warns when pointed at a local path.
+
+**First A/B, live** — *"what connects the rectus abdominis to the rest of the
+body?"*, S3 Vectors, top_k 4, rerank on:
+
+| | passages | hops | input tokens |
+|---|---|---|---|
+| expansion off | 4 | — | 7,025 |
+| expansion on | 6 | 2 | 7,827 |
+
+Vector search returned four `Body Connection Graph` chunks and **never
+surfaced either fascial-line chunk**. Expansion added both — Superficial Front
+Line (★★☆) and Front Functional Line (★☆☆) — and the answer used them. That is
+the case for graph retrieval on this corpus in one example: the edge knew
+something the embedding did not.
+
+**Ordering, and why hops carry no score.** They arrive by traversal, so there
+is nothing commensurable with the seeds' vector distance. They are ordered by
+the edge's own evidence grade, then the rank of the seed they hung off, capped
+by a budget so a hub node cannot flood the context. Consequence:
+**recall@k and MRR are not comparable between expanded and unexpanded runs** —
+report the graph row as its own instrument, exactly as PLAN already requires
+for agentic `session_recall` versus single-shot MRR.
+
+Also caught by the type checker rather than at runtime: `build_graph` reused
+the name `heading` for both a `Match` and a `str` in one scope. And `budget=0`
+returned one hop, because the cap was checked after appending — the difference
+between "expansion off" and "expansion on, small budget".
+
+## 2026-08-21 — the corpus outgrew the embedder while nobody was looking, and `plan` was an N+1 that hid behind a 2-file fixture
+section: corpus
+
+Two defects, found in the same afternoon, both invisible at test-fixture scale
+and both only observable against the real 585-chunk corpus.
+
+### 1. Four chunks had grown past Titan v2's hard cap and could not be embedded
+
+Adding a post-build size check (asked for directly: *"we probably need to add
+some health after build to check files size"*) turned up four `entrapment`
+chunks at **1.08–1.65× the 8,192-token embedding cap** — not near it, over it.
+An over-cap chunk is not a degraded chunk; it produces **no vector at all**.
+
+The comment in `health.studio` `apps/web/src/lib/kb/chunk.ts` asserting *"0 of
+383 chunks are anywhere near the limit"* was true when written and had since
+become false — the corpus grew to 579. **A measured claim with no test behind
+it decays silently.** It is now `EMBEDDER_TOKEN_CAP`, exported and asserted.
+
+The fix (health.studio owns it — see that repo's `FINDINGS.md`) peels
+`### Sources` off an over-cap chunk onto siblings, **keeping the parent's key**:
+
+```
+11173 → 3877 tok  guyon_canal            (+2 sources chunks)
+13476 → 4219 tok  fibular_head           (+2 sources chunks)
+ 8818 → 3528 tok  pronator_teres         (+1 sources chunk)
+ 9457 → 3683 tok  meralgia_paresthetica  (+1 sources chunk)
+```
+
+Corpus 579 → 585. **`radiocarpal` remains at 8,172 of 8,192 tokens** — 20
+tokens of headroom, a refusal rather than a peel because its bulk is not
+`Sources`. The build now warns at 90% of the cap, which is the only thing that
+will announce the next one.
+
+Two sub-findings worth keeping:
+
+- **Budget against the constraint you are actually failing.** First attempt
+  budgeted the peel against the 1,024-token *ceiling* rather than the 8,192
+  *cap*, producing 17 sources chunks for `fibular_head` alone and taking the
+  corpus 579 → 628. Rebudgeted to 80% of the cap: **+6 chunks, not +49.**
+- **A peel is not a split, and filing it as one broke an invariant.** A split
+  retires its parent's key; a peel keeps it. Recording peels as `SplitRecord`
+  falsified `retired === parents`. They get their own `PeelRecord` ledger.
+
+`docs/INGEST-RUNBOOK.md`'s "largest chunk is 24.7 KB, ~30% headroom" is now
+**31,072 B and ~5%**; the assertion in `test_default_limit_admits_the_largest
+_real_chunk` was updated to the measured number rather than left to rot.
+
+### 2. `plan` issued one `head_object` per file — 1,170 round trips
+
+A dry run against the rebuilt corpus printed its header and then appeared to
+hang. It was not hung. `CorpusSyncer.plan` called `head_object` per key to
+compare ETags, and 585 chunks × (document + sidecar) is **1,170 sequential
+HEAD requests**.
+
+**`ListObjectsV2` already returns the ETag of every object it lists.** The
+per-key HEAD bought nothing. `plan` now reads `list_remote_etags()` once:
+
+| | before | after |
+|---|---|---|
+| S3 requests to plan | 1,170 HEAD | 1 LIST |
+| wall clock, live dev bucket | **>4m48s** (still running when sampled) | **3.5s** |
+| upload plan | 191 upload / 979 skip / 0 orphans | **byte-identical** |
+
+ETag parity between LIST and HEAD is exact, multipart `-N` suffix included, so
+the comparison still fails toward re-uploading and never toward a false skip.
+
+**Why this survived a test suite with 28 passing sync tests.** Every fixture
+was 2–40 files, where 1,170-vs-1 is 4-vs-1 and reads as noise. The regression
+test therefore asserts *cost*, not behaviour — plan a 4-file corpus and a
+40-file corpus and assert the S3 request counts are **equal**, which is only
+possible if nothing is asked per file. Counting is done on botocore's
+`before-call.s3` event bus, because a wrapper around the client object does not
+see calls a paginator makes internally. Verified red against the old code:
+`assert 80 == 0`, one HEAD per file, exactly as predicted.
+
+Corollary for the rest of this repo: **an N+1 is a correctness-preserving bug,
+so no functional test can catch it.** Where latency matters, the assertion has
+to be about request count.
+
+## 2026-08-22 — the first real sync landed 96/96, and printed two numbers wrong on the way
+section: corpus
+
+The S3 Vectors ingest of the 585-chunk corpus succeeded completely — job
+`FWU5IEPVHS`, `scanned=585 failed=0 skipped=0 deleted=0`, and a follow-up dry
+run reports **`would upload: 0  unchanged: 1170`**, i.e. the bucket now equals
+the build exactly. Both defects below are in the *reporting*, not the data.
+Neither would have been caught by re-reading the code; both needed a real run.
+
+### `indexed=89` undercounted a 96-document job
+
+Bedrock splits the counter in two — `numberOfNewDocumentsIndexed` **and**
+`numberOfModifiedDocumentsIndexed` — and the syncer read only the first:
+
+```
+numberOfNewDocumentsIndexed:      89
+numberOfModifiedDocumentsIndexed:  7   ← dropped on the floor
+                                  ──
+                                  96   = exactly the 96 changed bodies planned
+```
+
+The full statistics reconcile perfectly against the upload plan (191 objects =
+96 bodies + 95 sidecars), which is what makes the report's `89` provably wrong
+rather than merely suspicious.
+
+**The dangerous case is not this one.** A sync that only *edits* existing
+chunks — no new files, the ordinary state of a mature corpus — has
+`New = 0`, so the old reading prints **`indexed=0`**: identical to an ingestion
+that did nothing, at exactly the moment an operator is checking whether their
+edits took. `_indexed()` now sums both, and still returns `None` when Bedrock
+supplied neither, so "absent" stays distinguishable from "zero".
+
+### The stale-corpus warning fired on a file that produces zero chunks
+
+The sync printed `⚠ 1 corpus input(s) modified since the corpus was built:
+docs/FINDINGS.md — you will ingest stale text`. It was wrong. `warn_if_stale`
+walked all of `docs/**` by mtime, but **`docs/` is not the corpus**: the build
+allowlists directories and excludes named files, and records both in the
+manifest it already reads —
+
+```
+allowedDirectories : ['anatomy', 'exercise-science']
+excludedDocs       : FINDINGS.md  → "root-level doc — not in an allowlisted
+                                     knowledge directory"
+                     PM.md, LICENSE.md, positioning-kit.md,
+                     anatomy/referral-boundary.md, anatomy/traditional-boundary.md
+```
+
+`FINDINGS.md` contributes **nothing** to the 585 chunks. And by this repo's own
+convention findings are appended after almost every session — so a
+directory-level check fires on nearly every sync while being right almost
+never. That is self-defeating: the module's own comment already says *"a
+warning that is usually wrong gets ignored when it is right"*, about test
+files, and then the same trap was walked into one directory up.
+
+Fixed by consulting the manifest's declared contract instead of guessing
+(`feeds_the_corpus`), with an explicit fallback to over-warning when a manifest
+predates those keys — an operator can dismiss a spurious warning, but cannot
+recover from silently ingesting a stale corpus.
+
+**Why it was unverifiable.** `warn_if_stale` lived in `services/kb_sync/`, and
+`testpaths = ["packages/core/tests"]` — nothing under `services/` is collected,
+so the check had no tests and could not get any where it sat. It moved to
+`docpipe_core.kb_sync.corpus` (it is corpus logic reading the corpus manifest),
+following the same promotion as `agent.py` in c74898f. **A guard that lives
+where the test runner cannot see it is not a guard.** Worth auditing what else
+sits under `services/` and `scripts/` believing itself covered.
+
+### …and then the Aurora ingest crashed on the auto-pause we had already fixed elsewhere
+
+```
+ValidationException: ... The Aurora DB instance db-L3DM7APXX43HCTKXNZMEBRRQCQ is
+resuming after being auto-paused. Please wait a few seconds and try again.
+```
+
+**We fixed this exact failure on 2026-08-21 — for `Retrieve` only.** The
+retry lived in `KnowledgeBaseClient`, so the query path and the agentic loop
+were covered while `StartIngestionJob` had nothing, and the CLI died with a
+traceback *after* the upload had already run.
+
+The asymmetry is worth stating as a rule: **a scale-to-zero database has no
+"cold path" and "warm path" — every caller can be the one that wakes it.**
+`StartIngestionJob` is in fact *more* likely to hit a paused cluster than
+`Retrieve` is, because a sync runs minutes after a build, long past anything
+that might have kept the cluster up. We fixed the path we happened to be
+looking at that day and never asked which other callers touch the same
+database.
+
+Fixing it forced the right refactor. `is_retryable` had already migrated once
+(`agent.py` → `retrieval.py`) when it got its second caller, and the backoff
+loop is copied verbatim in `agent.py`, `retrieval.py` and `llm.py`. A fourth
+copy in `syncer.py` would have been the wrong answer, and importing the query
+path from the ingest path to learn how to wake a database is a dependency
+pointing backwards. Both now live in **`docpipe_core/aws.py`** — the retry
+policy is a property of the infrastructure, not of whoever calls it.
+
+`llm.py` deliberately keeps its own narrower set: it calls Bedrock Converse and
+never touches Aurora, so the auto-pause arm would be dead weight there.
+
+Pinned by four tests using the verbatim error string: a cold start succeeds, a
+cluster that never wakes still raises (retry, not swallow), the budget is
+respected exactly (1 attempt + 2 retries), and a *genuine* `ValidationException`
+— a bad `dataSourceId` — fails fast on the first attempt rather than sleeping
+through four retries for a misconfiguration that will never fix itself. That
+last one is why the match is on the resume sentence and not on the error code.
+
+## 2026-08-22 — the reingest doubled the graph and cost 4 questions of flat recall; every loss was already at the k=5 boundary
+section: retrieval
+
+Both stores now hold the corpus and agree exactly: **S3 Vectors 585 vectors,
+Aurora 585 rows / 585 non-null embeddings**, counted directly rather than
+trusted from a job status — `COMPLETE` wrote 0 vectors once before
+(2026-08-16), so the count is checked, not assumed. Jobs `FWU5IEPVHS`
+(S3 Vectors) and `TLI4RXLTWF` (Aurora), both `failed=0 skipped=0 deleted=0`.
+
+**Bedrock's ingest is incremental per-KB, not per-bucket.** Aurora was expected
+to re-embed all 585 because its last ingest was the 496-chunk corpus; it
+reported the *same* `89 new + 7 modified = 96` as S3 Vectors, because the 496
+documents it already held were unchanged in the bucket and it re-embedded none
+of them. Useful to know before budgeting a re-ingest: you pay for the diff.
+
+### What the corpus gained
+
+`make graph-index`, rebuilt from the deployed corpus (which for the first time
+equals the local build):
+
+| | before | after |
+|---|---|---|
+| nodes | 304 | **393** |
+| edges | 247 | **396** |
+| nerve nodes | 8 | **52** |
+| `supplies` edges | 23 | **172** |
+
+### What retrieval lost
+
+Single-shot, rerank off, semantic — same settings as the 496 baselines:
+
+| store | corpus | recall@5 | MRR |
+|---|---|---|---|
+| S3 Vectors | 496 | 0.7879 | 0.5634 |
+| S3 Vectors | **585** | **0.7273** | 0.5472 |
+| Aurora | 496 | 0.7879 | 0.5646 |
+| Aurora | **585** | **0.7424** | 0.5510 |
+
+**Four questions lost on S3 Vectors, three on Aurora, and none gained on
+either.** The diagnosis is in the prior ranks, not the topics:
+
+| question | stratum | rank at 496 | at 585 |
+|---|---|---|---|
+| `index-01` | graph-index | 3 | out |
+| `chain-02` | graph-chain | 4 | out (S3 Vectors only) |
+| `conn-05` | graph-connection | 5 | out |
+| `nerve-01` | graph-nerve | 5 | out |
+
+**Every single loss was already sitting at rank 3–5.** Nothing that was ranked
+1 or 2 moved. This is not a corpus-quality regression, it is *displacement*:
+89 new chunks entered the same embedding space and crowded the marginal
+answers out of a fixed k=5 window. `nerve-01` is the clearest case — 44 of the
+89 new chunks are the nerve registry, competing directly with the question that
+FINDINGS 2026-08-17 already recorded as fragile ("comes back with ulnar
+*territory* rather than the ulnar *nerve*").
+
+**The stated cost of growing a corpus, then: recall@k is not a property of the
+corpus, it is a property of the corpus *and* k.** Adding correct, well-graded
+chunks lowered it. Any future "the corpus grew, did retrieval improve?" has to
+compare per-question ranks, because the aggregate hides that nothing got worse
+— things got *crowded*.
+
+### Two measurement traps hit while producing the table above
+
+- **Aurora's MRR needs `--semantic-score-is-distance` or it reads as a
+  collapse.** First run reported MRR 0.2843 against a 0.5646 baseline, which
+  looks like catastrophe and is entirely an artifact: the flag is opt-in in
+  `kb_eval.py`, the 496 "scorefix" baseline was taken with it, and without it
+  the raw semantic list is scored worst-first. With it: **0.5510**. Recall@k is
+  unaffected — it is set membership within the top-k, and the candidate set is
+  correct either way — which is exactly why recall looked sane while MRR did
+  not. **A store-specific correction that is opt-in in the harness will be
+  forgotten; every Aurora row must carry it.**
+- **The eval defaults `rerank` OFF; `retrieve()` defaults it ON.** Every number
+  above is therefore a floor, not the path a user travels — the 2026-08-17
+  ruling made rerank the default in production. Comparing the raw rows is
+  correct for isolating corpus effects, and wrong for answering "did this hurt
+  anyone". Reranked rows follow.
+
+### The reranked sweep cannot be retried into working — it has to be paced
+
+The reranked run died after ~15 minutes with `ReadTimeoutError` and wrote no
+report at all. Three measurements, in the order they changed the diagnosis:
+
+1. **A reranked call takes 1.13 s.** Six back-to-back calls, 0.52–1.16 s each.
+   So a 60 s read timeout was never about the call being slow, and the
+   "reranking is expensive" hypothesis was wrong.
+2. **The quota is real: `L-11512E58` = 3 req/min, ACCOUNT level,
+   `Adjustable: false`** (re-verified live 2026-08-22). Exactly three calls
+   succeed, and the fourth fails.
+3. **Overage is a clean `ThrottlingException` in ~5 s, not a hang.** Which
+   means it *was* being retried — by two layers at once.
+
+**And that is the trap.** `ThrottlingException` is in `_RETRYABLE_CODES`, so
+`with_backoff` retries it — sleeping 1+2+4+8 = **15 s** across four attempts.
+A 3/min bucket needs up to **20 s**. The retry budget is not occasionally
+unlucky, it is *systematically* just short: every retry chain is guaranteed to
+exhaust itself while still throttled. Underneath, botocore's own retry layer
+(no `Config` is set anywhere in this repo, so max_attempts defaults to 5) is
+retrying the same call independently. Two uncoordinated retry loops storming a
+fixed-rate bucket, and the transient ReadTimeoutError landed inside that storm
+and took the whole run with it.
+
+**A token bucket refills on a clock. No amount of retrying hurries it.** The
+fix is to pace: `score_question_set` now waits `60 / COHERE_RERANK_RPM` between
+reranked questions, and does nothing at all on the raw path (which never
+touches Cohere and would otherwise go from 90 seconds to 22 minutes for no
+reason). `rerank_rpm=0` disables pacing for the day the quota changes — the
+number is AWS's, not ours, and a harness that hardcodes it becomes the
+bottleneck.
+
+**A 66-question reranked sweep is ~22 minutes, and that is a floor set by AWS.**
+Worth knowing before treating a reranked eval as something to run casually,
+and worth knowing that the two stores share one account-level bucket, so their
+sweeps must run in sequence — in parallel each would see half the rate and
+both would throttle.
+
+Generalisable: **retry handles a failure that will clear on its own; pacing
+handles a limit that will not.** Retrying into a rate limit converts a slow
+success into a fast failure, and the symptom surfaces far from the cause — here
+as a read timeout, four layers away from a quota.
+
+### Reranking absorbs the dilution entirely — and Aurora cannot run that path at all
+
+**S3 Vectors, the production path (rerank ON by default since 2026-08-17):**
+
+| corpus | path | recall@5 | MRR |
+|---|---|---|---|
+| 496 | raw | 0.7879 | 0.5634 |
+| 585 | raw | 0.7273 | 0.5472 |
+| 585 | **reranked** | **0.7879** | **0.6571** |
+
+**The regression does not exist on the path users travel.** Recall returns
+exactly to the 496 baseline and MRR is materially better than it has ever been
+raw. Per question, rerank recovers six and costs two:
+
+```
++ chain-02 (r4)  conn-06 (r4)  conn-07 (r1)  conn-09 (r2)  index-01 (r1)  nerve-01 (r5)
+- biblio-01      chain-05
+```
+
+Three of the recoveries — `index-01`, `nerve-01`, `chain-02` — are precisely
+the chunks dilution had pushed past rank 5, and the cross-encoder pulls
+`index-01` from *out of the window* to **rank 1**. Three more (`conn-06/07/09`)
+were misses at 496 too, so this is not only recovery. `biblio-01` is the loss
+the 2026-08-17 ruling already named and accepted; `chain-05` is new and
+unexplained. Against the 496 raw baseline the reranked path is missing only
+`biblio-01`, `chain-05`, `conn-05`.
+
+**Two safety numbers moved in the right direction and neither is in the
+headline metric.** Confabulations on the `gap-*` questions fell **6 → 3**, and
+abstention on the `not-covered` stratum went **0.0 → 0.6**. Reranking makes the
+system likelier to return nothing rather than the nearest wrong thing.
+
+So the honest summary of the reingest is: **the raw number got worse, the
+shipped number did not, and the corpus got a graph that is 60% larger.**
+
+### The Aurora KB has been 403-ing the default retrieval path since it was created
+
+The paired Aurora run never scored a question:
+
+```
+AccessDeniedException: .../docpipe-dev-kb-aurora-role/BedrockReranking-… is not
+authorized to perform: bedrock:Rerank
+```
+
+Retrieve-with-rerank runs the rerank step under the **KB's service role**, not
+the caller's. `kb.py` learned that on 2026-08-16 and carries both
+`RerankRetrievedResults` and `InvokeRerankModel`. `kb_aurora.py`, added
+2026-08-20, carries neither — **the lesson was learned once and not applied to
+the second knowledge base.**
+
+`retrieve()` defaults `rerank=True`, so this is not an eval inconvenience: any
+caller pointed at Aurora with default arguments has been getting a 403 for two
+days. It stayed invisible because every Aurora measurement taken in that window
+— the 496 baseline, the score-direction work, the six agentic runs — passes
+`rerank=False`, and the agentic loop supplies its own tool arguments.
+
+**A correction falls out of it.** `retrieval.py` claimed "the HYBRID and rerank
+paths order correctly on **both stores**" (2026-08-20). HYBRID was measured on
+both. The Aurora rerank half was not measured and *could not have been*, since
+that path 403s. Corrected in place. Until an Aurora reranked baseline exists,
+nothing is known about how that path orders — and the `semantic_score_is_distance`
+question for reranked Aurora results is therefore still open.
+
+Fixed in `infra/components/kb_aurora.py`; **needs a `pulumi up` to take
+effect.** Verified the change is a strict superset of the live policy — all
+five existing Sids retained, two added — because Pulumi diffs the statement
+array positionally and inserting at index 1 renders as if four statements were
+rewritten.
+
+**The class of bug: a second implementation of a thing that already exists does
+not inherit its bug fixes.** `kb.py` and `kb_aurora.py` are two knowledge bases
+with one contract between them, and the only thing keeping their IAM in step is
+that someone remembers. Worth a test that asserts the two role policies grant
+the same Bedrock actions.
+
+## 2026-08-23 — with rerank granted, the two stores become the same instrument
+section: retrieval
+
+The `bedrock:Rerank` grant is applied and live (7 statements on
+`docpipe-dev-kb-aurora-role`, 5 preserved + 2 added; `pulumi up` reported
+`1 updated, 62 unchanged`). The Aurora reranked baseline that had never been
+possible now exists — and it is a carbon copy of the S3 Vectors one:
+
+| store | corpus | path | recall@5 | MRR |
+|---|---|---|---|---|
+| S3 Vectors | 585 | reranked | 0.7879 | 0.6571 |
+| Aurora | 585 | reranked | **0.7879** | **0.6571** |
+
+Not merely equal in aggregate — equal question by question:
+
+```
+same hit/miss    66/66
+same rank        66/66
+identical top-5  63/66   (2 of the 3 differ only in list ORDER, 0 keys apart;
+                          only refer-03 returns different chunks, 2 of 5)
+```
+
+Same three confabulations (`gap-01`, `gap-04`, `gap-05`), same 0.6 abstention,
+same per-stratum table to four decimals.
+
+**The cross-encoder erases the store.** On the raw path the two differ —
+0.7273 vs 0.7424 recall, and Aurora needs a client-side re-sort to be readable
+at all because Bedrock hands back cosine *distance* there. Reranked, the vector
+search is demoted to a candidate generator for a 25-document pool, and
+`cohere.rerank-v3-5` re-reads all 25 against the query. Both stores put the
+same 25 in the pool, so the same 5 come out in the same order. Every property
+that distinguishes the backends — score semantics, sort direction, ANN index
+type — lives *below* the reranker and does not survive it.
+
+**Consequence for the Aurora-vs-S3-Vectors decision: on the shipped path it is
+not a retrieval-quality decision.** It is cost, operational shape (auto-pause,
+the Data API, a VPC) and what pgvector unlocks later. Anyone comparing the two
+on recall or MRR with rerank on is measuring Cohere, not the store.
+
+**And it explains why the 403 hid for two days.** Aurora's rerank path being
+completely dead was invisible precisely because nothing that measured Aurora
+used it — while the number it would have produced is indistinguishable from the
+store that worked.
+
+Also observed: the first Aurora reranked call after idle took **23.5 s** —
+auto-pause resume, against 1.32 s measured warm on the Retrieve path
+(2026-08-20). The 20 s pacing kept the cluster warm for the sweep, so a batch
+job never sees it; a first user request does.
+
+Open, unchanged: `chain-05` is newly lost under rerank on both stores and is
+still unexplained, and `kb.py` / `kb_aurora.py` still have no test asserting
+they grant the same Bedrock actions — the only thing that would have caught
+this 403 at review time.
+
+## 2026-08-23 — graph expansion is dominated by `k=9`, and the anecdote that justified it was an argument for a bigger k
+section: retrieval
+
+Graph expansion (`graph.py`, 393 nodes / 396 edges) had shipped in code on the
+strength of a single A/B and had never been scored. Scored now, against the
+nine genuine misses of the reranked 585 baseline (66 questions, `not-covered`
+excluded because missing is correct there):
+
+| | rescues | which |
+|---|---|---|
+| graph expansion, budget 4 | **2 / 9** | `chain-05`, `nerve-04` |
+| plain `k=9`, no graph | **6 / 9** | `conn-05`, `conn-08`, `chain-05`, `nerve-04`, `entr-02`, `biblio-01` |
+
+**The graph's two rescues are a strict subset of what `k=9` gets for free.**
+Expansion spends up to 4 extra passages, so `k=5+4` and `k=9` are the same
+context budget — and at that budget the graph is strictly dominated. It rescues
+a third as many questions and adds a JSON index, a parser, a traversal and an
+ordering rule to do it.
+
+**The reasoning error is the transferable part.** The 2026-08-21 A/B —
+*"vector search returned four chunks and never surfaced either fascial-line
+chunk; expansion added both"* — was run at `top_k=4`. It is evidence that the
+right chunks sat just outside a narrow window. That is an argument for widening
+the window. It was read as an argument for traversal, because traversal was the
+thing being built. **A demo that shows "X was missing and my feature added it"
+is not evidence for the feature until the null control — "would anything else
+have added it?" — has been run.**
+
+**Where expansion is inert is where retrieval is weakest.** Three of the nine
+misses (`conn-05`, `conn-08`, `entr-02`) produce **zero hops** — the seeds land
+on chunks whose only relationship content is `Key clinical connections` (132
+files) and `Functional relationships` (117), which are prose and carry no
+parseable ids. So the graph is thinnest exactly where the vector path already
+failed, and `k=9` rescues all three.
+
+**Not retracted, scoped.** This measures retrieval *reach* on a 66-question set
+whose questions are mostly single-hop; it says nothing about answer quality,
+about the agentic path (which composes its own retrieval calls), or about a
+question set built to need two hops. `chain-05` is a genuine point of interest
+— rerank lost it and traversal recovers it — so the edge does know something
+the cross-encoder does not. But on the instrument we have, the honest summary
+is: **raise `k` before reaching for a graph, and do not ship the graph as a
+default.**
+
+Cheapest next test if the graph is to be defended: a question set that
+*requires* two hops. If it does not win there, it does not win.
+
+## 2026-08-23 — the ef_search sweep is a flat line: 585 vectors is too small for HNSW to approximate
+section: aurora
+
+The sweep PLAN called "the strongest single exhibit in the whole project" ran
+(`scripts/aurora_sql_eval.py`, direct SQL over the RDS Data API, 66 ratified
+questions, one transaction per value so `SET LOCAL hnsw.ef_search` actually
+holds). The curve:
+
+| ef_search | recall@4 | recall@5 | recall@10 | MRR@10 | p50 | p95 |
+|---|---|---|---|---|---|---|
+| 10 | 0.7869 | 0.8033 | 0.8689 | 0.6048 | 0.154 s | 0.223 s |
+| 40 | 0.7869 | 0.8033 | 0.8689 | 0.6048 | 0.153 s | 0.223 s |
+| 100 | 0.7869 | 0.8033 | 0.8689 | 0.6048 | 0.155 s | 0.225 s |
+| 200 | 0.7869 | 0.8033 | 0.8689 | 0.6048 | 0.155 s | 0.224 s |
+
+Not merely equal in aggregate — **zero per-question rank changes between ef=10
+and ef=200**. At n=585 the beam at ef=10 already reaches everything the graph
+has; there is no approximation error to trade against latency, so the knob has
+nothing to turn. The recall/latency trade-off the exhibit was designed to plot
+exists only at corpus sizes where HNSW actually approximates. The honest chart
+is the flat line, labeled with why it is flat.
+
+**The salvage is the instrument decomposition.** Same store, same corpus, same
+questions: direct SQL p50 **0.154 s**; Bedrock Retrieve on Aurora, warm, p50
+**0.523 s** (2026-08-20); Bedrock Retrieve on S3 Vectors **0.960 s**. About
+70% of the shipped Aurora path's latency is Bedrock overhead, not Postgres —
+and the sweep instrument cannot see the auto-pause resume a first user request
+pays, which is the number that actually hurts.
+
+Consistency check that both instruments measure the same thing: sweep recall@5
+is scored on the 61 answerable questions; the shipped-path report scores all
+66. 0.8033 × 61/66 = **0.7424 exactly** — the 2026-08-22 Aurora single-shot
+number. Rank-for-rank agreement, different denominators. (Report the
+denominator with the number; the two "recalls" are 6 points apart while being
+the same result.)
+
+Also identical on both instruments: all six `gap-*` questions return forbidden
+chunks — raw top-k has no abstention, and neither does the shipped single-shot
+path. Nothing new is lost by going direct.
+
+Evidence: `docs/baselines/2026-08-23-aurora-585-efsearch-sweep.json`.
+
+## 2026-08-23 — 304 near-duplicate pairs, and every one of them is the graph registry talking to itself
+section: corpus
+
+The self-join only Aurora can run (`a.embedding <=> b.embedding < 0.15`,
+585 chunks, 170,820 pairs examined): **304 pairs** under the threshold.
+The structure of those pairs is the finding:
+
+- **Prose is clean.** Every pair involving a non-graph chunk is two sections
+  of the *same* authored document — adjacent-section continuity, not
+  redundancy. **Zero cross-document prose pairs.**
+- **Sibling nerves are where the embedder runs out of resolution.** ~93 pairs
+  are `body-graph-nerve--X` vs `--Y` for anatomically adjacent nerves. The
+  closest pair in the corpus is proper vs common palmar digital median at
+  **0.0133** — genuinely different content the embedding all but cannot
+  separate. medial/lateral antebrachial cutaneous 0.047, trapezoid/trapezium
+  0.048: the classic confusables, confirmed confusable in vector space.
+- **`--sources` chunks collide with their own document's content sections**
+  (coccygeus sources ↔ anatomy at 0.036) and with other documents' sources.
+  The bibliography does not just dilute its own chunk (the 2026-08-14
+  argument) — it manufactures near-duplicates across the registry.
+
+Answer to "are my 585 chunks distinct": the prose corpus, yes. The nerve
+registry, no — and that is measured confusability sitting exactly where the
+`nerve-*` stratum misses live. Evidence:
+`docs/baselines/2026-08-23-aurora-585-near-dupes.json`.
+
+## 2026-08-23 — the $ column: the store is 1–3% of the marginal cost, and the Price List now has a rerank SKU
+section: cost
+
+RETRACTION first: "the Price List API carries no rerank SKU" (2026-08-13, and
+repeated in PLAN) is no longer true. `AmazonBedrockFoundationModels` now
+carries `Cohere Rerank v3.5 (Amazon Bedrock Edition)` at **$0.002 per search
+unit** — and the pricing page's $2.00/1k queries agrees, two independent
+sources. DeepSeek and Titan are still absent from the Price List (that service
+code lists third-party models only, and not all); their rates below are from
+the pricing page, 2026-08-23: DeepSeek V3.2 $0.62/$1.85 per 1M in/out, Titan
+Text Embeddings V2 $0.02 per 1M (corroborated: 420k-token corpus ≈ 1¢).
+
+Worked numbers (rates + arithmetic in
+`docs/baselines/2026-08-23-cost-column.md`, sizes measured live):
+
+| | S3 Vectors | Aurora |
+|---|---|---|
+| at rest / mo | ≈ $0.00 (3.5 MB logical) | ≈ **$0.12** (the ACU floor; 21 MB storage is noise) |
+| single-shot query | $0.000056 | $0.000009 warm; **~$0.005 per cold visit** (the wake, not the query) |
+| + rerank | +$0.002 — 36× the retrieve it sits on | same |
+| agentic question | ≈ $0.006 | ≈ $0.006 |
+
+The verdict the column supports: **the stores are not a cost decision any more
+than they were a recall decision.** DeepSeek is ~100× the retrieval it drives
+($5.50 vs $0.06 per 1,000 questions); the most expensive retrieval component
+is the reranker, not the store; and Aurora's cost is shaped by traffic
+*pattern* (steady amortizes the wake; sparse pays ~$0.005 per cold visit)
+while S3 Vectors is flat per-request — the only regime where the store choice
+shows up in money at all.
+
+## 2026-08-23 — the guardrail costs ten points of recall exactly where the corpus is most clinical; the verbatim seed buys four back
+section: guardrail
+
+The eval could never see the guardrail: `KbAgent` has applied it since
+8301ab1, but `kb_agentic_eval.py` never passed a guardrail id — so **every
+agentic number to date was measured unguarded**, including the six-run matrix.
+Fixed, and re-baselined at 585 with the full decomposition (14 runs, two per
+cell, `--workers 6`; recall is concurrency-agnostic, wall stats are not):
+
+| strategy (585, semantic) | runs | mean session_recall |
+|---|---|---|
+| guarded | 0.7705 / 0.7869 / 0.8197 / 0.8361 | **0.8033** |
+| guarded HYBRID | 0.8197 / 0.8525 | 0.8361 |
+| unguarded (null control) | 0.8689 / 0.9016 / 0.9180 / 0.9344 | **0.9057** |
+| unguarded + verbatim seed | 0.9344 / 0.9508 / 0.9508 / 0.9508 | **0.9467** |
+
+**The decomposition the control makes possible:**
+- **Corpus 496→585: no effect.** Unguarded 585 mean 0.9057 vs the 2026-08-20
+  semantic runs' 0.9098 — within run variance.
+- **Guardrail: −10 points**, from 20–23 interventions per run.
+- **Verbatim-first seed: +4 points**, and it collapses variance — three of
+  four runs land on exactly 58/61.
+
+**The guardrail's blocks are stochastic and land on the corpus's own use
+case.** Across six guarded runs, 31 distinct questions were intervened on and
+**zero were intervened on in all six** — temperature and output-scanning make
+the block a probability, not a property of the question. Per stratum
+(ever-blocked / total): nerve **4/4**, refer **3/3**, entr **2/2**, gap 5/6,
+conn 7/15. Ten questions were blocked *before any tool call* at least once —
+among them `prose-02` (the MRI/bulging-disc question whose corpus answer IS
+the pain-science reassurance content) and `conn-04` (the red-flag question).
+The questions phrased as a person describing their own symptoms — the reason
+the corpus exists — are what `MedicalDiagnosis` pattern-matches.
+
+**Consequence for Phase 4b's open prediction** ("the guardrail probably
+permits this — verify"): verified, and the prediction was wrong in the
+direction the repo predicted it might be. The DRAFT guardrail as configured
+blocks the corpus's core question shapes ~⅓ of the time. Tuning it (or
+narrowing the denied-topic language) is now on the critical path **before
+Phase 3 ships**, not a Phase 4b footnote.
+
+**Verbatim-first, measured** (the run the six-run entry pointed at): per-run
+misses draw only from {`conn-05`, `conn-08`, `conn-10`, `nerve-04`,
+`index-01`}; the union over four runs is **60/61**, and `conn-05` is the one
+answerable question nothing agentic ever hits (plain `k=9` does — its chunk
+sits just past every top-5). Two costs, both structural: **abstention on the
+not-covered class drops to 0.0** — the seed retrieves unconditionally, so
+every `gap-*` question returns forbidden chunks before the model can decline —
+and `no_tool_questions` goes to zero by construction. The seed should ship
+for answerable traffic, but it removes the "the model chose not to search"
+behavior that was doing quiet abstention work.
+
+Instrument warning for the cell nobody should run naively: guarded+verbatim
+would score high session_recall while the user sees a refusal — the seed
+retrieves before the guardrail can stop anything, so recall stops measuring
+what the user gets. Decide what the shipped config is first, then build the
+instrument for it.
+
+Evidence: `docs/baselines/2026-08-23-{s3vectors,aurora}-585-agentic-*.json`
+(14 reports, config in each).
+
+## 2026-08-24 — The guardrail was never blocking the questions. It was blocking the corpus.
+section: guardrail
+
+**Instrument:** `scripts/guardrail_probe.py` — ApplyGuardrail directly, which
+returns the full assessment (which denied topic, which content filter, what
+confidence) that the Converse loop's `stop_reason == "guardrail_intervened"`
+hides. Run: all 66 questions × 5 repeats against `pjpeeu9hf68a` DRAFT, INPUT
+stage (`docs/baselines/2026-08-24-guardrail-probe-draft-baseline.json`).
+
+**Result: bare questions block 3/66 — deterministically (5/5 each), all via
+`topic:MedicalDiagnosis`, zero stochastic.** The three:
+
+- `prose-02` "My MRI shows a bulging disc. Is that what is causing my back
+  pain?" — the flagship reassurance content's own question.
+- `gap-03` "I was told I have tarsal tunnel syndrome. What is happening?" —
+  the user *already has* the diagnosis and asks for an explanation.
+- `gap-04` "Can a heart problem cause pain down the left arm?" — **not even
+  personal**; a general mechanism question with no I/my in it. The classifier
+  matches subject matter, not the act of diagnosing.
+
+But the 2026-08-23 agentic re-baseline had **31/61 ever-blocked, all
+stochastic**. The gap is the loop's own message shape: on iterations ≥2 the
+"user" turn is a toolResult carrying retrieved passages, and with no
+`guardContent` block in the request Converse input-assesses *all* user
+content. Probing corpus chunks as INPUT text confirms it, and finds **two
+separate guards firing**:
+
+| chunk (anatomy/02-nerve-pathways…) | as INPUT | as OUTPUT |
+|---|---|---|
+| `08-when-to-see-a-professional` | 5/5 `topic:MedicalDiagnosis` | 5/5 `topic:MedicalDiagnosis` |
+| `04-mechanism-3-neural-cross-talk` | 5/5 `filter:PROMPT_ATTACK` @ LOW | 0/5 |
+
+The referral chunk — the content the product exists to surface — trips the
+denied topic in both directions, and ordinary mechanism prose trips
+PROMPT_ATTACK (input_strength HIGH blocks even LOW-confidence detections)
+when replayed as user input. The re-baseline's stochasticity was a lottery
+over *what got retrieved*, never over the questions.
+
+**Fixes (this commit):**
+
+1. `agent.py` now wraps the user's question in a `guardContent` block when a
+   guardrail is configured — Converse then input-assesses only the tagged
+   text, so retrieved passages stop being treated as user input. Output-stage
+   assessment still runs on every iteration. Pinned by two new protocol tests.
+2. `infra/components/safety.py` `MedicalDiagnosis` definition rewritten
+   (200-char field cap): "Asserting which disease, condition, or injury a
+   specific person has, or confirming or ruling one out for them. Education
+   about conditions, mechanisms, or seeing a professional is not this topic."
+   The carve-out sentence targets both the 3 input-blocked questions and the
+   output-stage assessment of answers that quote referral content. **Deployed
+   and confirmed separately** — see the next entry for the post-deploy probe
+   and the confirming guarded agentic runs.
+   **RETRACTED 2026-10-26 (the deploy claim only):** there is no next entry, and
+   `pulumi preview` on 2026-10-26 shows the live DRAFT guardrail still carrying
+   the pre-rewrite definition — see the 2026-10-26 infra entry. The code fix
+   (1) stands; the definition is committed, not applied.
+
+Evidence: probe JSON above; chunk probes reproducible via
+`scripts/guardrail_probe.py --text "$(cat …)" --source INPUT|OUTPUT`.
+
+## 2026-10-26 — a Bedrock API key can never do `Retrieve`, Sonnet 4 is end-of-life on us-east-1, and every Anthropic model in this account sits behind an unsubmitted use-case form
+section: bedrock
+
+Measured by health.studio's `physio-on-aws/01-aws-reach` on 2026-10-26 (boto3
+1.43, `anthropic[bedrock]` 2.3.0, one credential per process; the 15-row matrix
+with verdict texts is that repo's `goals/physio-on-aws/inventory/aws-reach.json`).
+These are docpipe's facts; mirrored here because the chat API (Phase 3) is
+designed on them.
+
+1. **`bedrock-agent-runtime:Retrieve` is SigV4-only, whatever a key's policy
+   says.** botocore's `bedrock-agent-runtime/2023-07-26/service-2.json` declares
+   `auth: ["aws.auth#sigv4"]` where `bedrock-runtime` and `bedrock` also list
+   `smithy.api#httpBearerAuth`; boto3 raises `NoCredentialsError` before any
+   request with only `AWS_BEARER_TOKEN_BEDROCK` set, and a raw `POST
+   …/knowledgebases/JDNNGSU1JT/retrieve` with `Authorization: Bearer` answers
+   403 `IncompleteSignatureException`. Consequence for the API: the app never
+   retrieves directly — it calls `POST /chat`, and the Lambda's **role**
+   retrieves (`infra/components/iam.py`, `bedrock:Retrieve` on the KB ARN). Do
+   not design a client path around a Bedrock API key. The `docpipe` IAM user
+   reaches both KBs: 3/3 passages for "forward head posture neck" on
+   `JDNNGSU1JT` (rank-1 0.678) and `A44CISMRAM` (0.673); rank-1 metadata carries
+   all seven stamp keys plus `kind` and the `x-amz-bedrock-kb-*` keys.
+2. **Claude Sonnet 4 has no Bedrock id any more.** `us.anthropic.claude-sonnet-
+   4-20250514-v1:0` and the un-prefixed id both answer 404 `ResourceNotFound-
+   Exception` "This model version has reached the end of its life."; no
+   `claude-sonnet-4-2025*` inference profile is listed. The Sonnet line today:
+   4.5 (LEGACY), 4.6, 5, 5.5 (ACTIVE).
+3. **Every Anthropic model is gated account-wide by a console form**, not an
+   IAM action: Sonnet 4.5 and 4.6 answer 404 "Model use case details have not
+   been submitted for this account. Fill out the Anthropic use case details form
+   before using the model. If you have already filled out the form, try again
+   in 15 minutes." Until it is submitted no Claude call on Bedrock succeeds
+   here. The chat API's model is therefore the stack's `chat_model_id`
+   (`deepseek.v3.2`) — the one the whole 2026-08 benchmark ran on — and not a
+   Claude id.
+4. **SDK shape, `anthropic` 2.3.0 on Bedrock** (for whoever wires a Claude call
+   later): `Messages.create()` has no `temperature` kwarg (it rides in
+   `extra_body`); the default body `anthropic_version` is `2026-10-21`, which the
+   LEGACY serving stack rejects (Sonnet 4.5 → 400 "Invalid API version:
+   2026-10-21"; pin `bedrock-2023-05-31` in `extra_body`); Sonnet 4.6 on the
+   newer stack rejects `temperature` outright (400 "temperature: Extra inputs
+   are not permitted").
+
+Spend ≈ $0: two Retrieve embeddings; every model call was refused before
+billing. Nothing in AWS was created or changed.
+
+## 2026-10-26 — a cold Aurora resume outran `with_backoff`: four auto-pause retries (~19 s) failed, the same Retrieve succeeded ~60 s later
+section: aurora
+
+Same run as the entry above (`physio-on-aws/01-aws-reach`, 2026-10-26). The
+first `Retrieve` on the Aurora KB `A44CISMRAM` (min ACU 0) failed through all
+four of `docpipe_core.aws.with_backoff`'s retries — ~1+2+4+8 s, ≈ 15 s of sleep,
+~19 s wall — every attempt a `ValidationException` "The Aurora DB instance … is
+resuming after being auto-paused. Please wait a few seconds and try again."
+The identical call ~60 s later succeeded with no retry.
+
+`with_backoff` was sized from a **1.32 s** resume (FINDINGS 2026-08-20); today's
+cold start is an order of magnitude longer, so on the Aurora KB a first query
+after idle fails deterministically rather than slowly. Two consequences, one
+taken: the chat Lambda (`infra/__main__.py`) binds to the **S3 Vectors** KB,
+which has no resume at all — the API has no cold-start arm. Anything that must
+query the Aurora KB after idle should budget ~1 min or pre-warm; raising the
+retry count alone would hold a Lambda open for the whole minute.
+
+## 2026-10-26 — the guardrail's `MedicalDiagnosis` rewrite is committed, not deployed: `pulumi preview` shows the live DRAFT still carrying the 2026-08-24 definition it replaced
+section: infra
+
+`pulumi preview --diff` on the dev stack (2026-10-26, run for the Phase 3 api
+component) lists exactly one update outside the new resources:
+
+```
+~ aws:bedrock/guardrail:Guardrail: (update)  [id=pjpeeu9hf68a__DRAFT]
+  ~ topicsConfigs[0].definition:
+      "Identifying, confirming, or ruling out a disease, condition, or injury
+       for an individual based on their symptoms."
+   => "Asserting which disease, condition, or injury a specific person has, or
+       confirming or ruling one out for them. Education about conditions,
+       mechanisms, or seeing a professional is not this topic."
+```
+
+The 2026-08-24 entry's fix (2) says "Deployed and confirmed separately — see
+the next entry"; there is no next entry, and the live definition is the old
+one. Retracted in place there (the deploy claim only — the `guardContent` code
+fix is in `agent.py` and tested). Same pattern as the `NONE` chunking change of
+2026-08-14 in PLAN.md's pre-flight: a committed component is a claim about
+intent until an apply says otherwise, and nothing in the repo asserts the
+deployed guardrail against the source the way `make kb-live-check` asserts the
+data source.
+
+Consequence for Phase 3's human gate: the `pulumi up` that creates the chat API
+**also applies this definition**. That is the intended state, but it means the
+first smoke run measures the rewritten topic policy, not the one the 2026-08-23
+guarded re-baseline scored.

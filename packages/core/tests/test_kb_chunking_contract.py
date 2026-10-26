@@ -10,14 +10,14 @@ attached. On health content that is a safety defect, not a tuning choice — and
 splitting at all.
 
 The requirement was written down in three places — `build-kb.ts`'s header,
-`MANIFEST.json.ingestion.note`, and a comment in `pulumi/components/kb.py` —
+`MANIFEST.json.ingestion.note`, and a comment in `infra/components/kb.py` —
 and enforced in none, while the deployed configuration said `FIXED_SIZE` for
 its entire life. Two repos each wrote the rule down *for the other* and neither
 could see the other's copy. This file is docpipe's half of the fix: the
 consumer-side assertion. health.studio asserts the producer half.
 
 Deliberately static (AST over the Pulumi components) rather than a Pulumi unit
-test: pulumi-aws lives in `pulumi/venv`, not the uv workspace, so importing the
+test: pulumi-aws lives in `infra/venv`, not the uv workspace, so importing the
 component here would make the contract check depend on an optional install — the
 same "checked by nothing, in practice" failure it exists to end. Reading the AST
 also lets it scan for a splitter reached by *any* path, and it ignores comments,
@@ -31,7 +31,7 @@ covering new code is worse than none, because it reads as proof. So the file set
 is globbed and every data source found in it must satisfy the contract. A third
 KB is covered on the day it is written.
 
-It still does **not** check what is deployed. `pulumi/components/kb.py` has said
+It still does **not** check what is deployed. `infra/components/kb.py` has said
 `NONE` since `dbc3e8d` while the live data source has said `FIXED_SIZE` since
 2026-08-12 — this test was green for all of it. Closing that needs a
 `describe_data_source` check against the running stack (PLAN.md, Phase 3).
@@ -46,7 +46,7 @@ from pathlib import Path
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_COMPONENTS_DIR = _REPO_ROOT / "pulumi" / "components"
+_COMPONENTS_DIR = _REPO_ROOT / "infra" / "components"
 
 # The components that must exist and carry a data source. Named explicitly so a
 # rename or deletion fails loudly here instead of quietly shrinking coverage.
