@@ -15,76 +15,15 @@ from botocore.exceptions import ClientError
 from docpipe_core.agent import AgentSession, KbAgent
 from docpipe_core.models import ChatMessage
 from docpipe_core.retrieval import KnowledgeBaseClient
-
-BUCKET = "s3://kb-source/"
-
-
-def kb_result(text: str, key: str, score: float = 0.9) -> dict[str, Any]:
-    return {
-        "content": {"text": text},
-        "score": score,
-        "location": {"s3Location": {"uri": BUCKET + "corpus/" + key}},
-        "metadata": {"x-amz-bedrock-kb-source-uri": BUCKET + "corpus/" + key},
-    }
-
-
-class FakeKbRuntime:
-    """bedrock-agent-runtime: canned results, optionally erroring first."""
-
-    def __init__(self, results: list[dict[str, Any]], errors: list[Exception] | None = None):
-        self.results = results
-        self.errors = list(errors or [])
-        self.calls: list[dict[str, Any]] = []
-
-    def retrieve(self, **kwargs: Any) -> dict[str, Any]:
-        self.calls.append(kwargs)
-        if self.errors:
-            raise self.errors.pop(0)
-        return {"retrievalResults": self.results}
-
-
-class FakeBedrock:
-    """bedrock-runtime: a script of converse responses (or exceptions)."""
-
-    def __init__(self, script: list[Any]) -> None:
-        self.script = list(script)
-        self.calls: list[dict[str, Any]] = []
-
-    def converse(self, **kwargs: Any) -> dict[str, Any]:
-        self.calls.append(kwargs)
-        step = self.script.pop(0)
-        if isinstance(step, Exception):
-            raise step
-        return dict(step)
-
-
-def end_turn(text: str, tokens: tuple[int, int] = (100, 20)) -> dict[str, Any]:
-    return {
-        "stopReason": "end_turn",
-        "output": {"message": {"role": "assistant", "content": [{"text": text}]}},
-        "usage": {"inputTokens": tokens[0], "outputTokens": tokens[1]},
-    }
-
-
-def tool_turn(*calls: tuple[str, str, int | None]) -> dict[str, Any]:
-    """(toolUseId, query, min_evidence) per parallel call."""
-    content: list[dict[str, Any]] = [{"text": "let me search"}]
-    for tool_use_id, query, floor in calls:
-        tool_input: dict[str, Any] = {"query": query}
-        if floor is not None:
-            tool_input["min_evidence"] = floor
-        content.append(
-            {"toolUse": {"toolUseId": tool_use_id, "name": "search_kb", "input": tool_input}}
-        )
-    return {
-        "stopReason": "tool_use",
-        "output": {"message": {"role": "assistant", "content": content}},
-        "usage": {"inputTokens": 200, "outputTokens": 40},
-    }
-
-
-def client_error(code: str, message: str = "") -> ClientError:
-    return ClientError({"Error": {"Code": code, "Message": message}}, "op")
+from helpers import (
+    FakeBedrock,
+    FakeKbRuntime,
+    client_error,
+    end_turn,
+    guardrail_blocked,
+    kb_result,
+    tool_turn,
+)
 
 
 def agent(bedrock: FakeBedrock, kb_runtime: FakeKbRuntime, **kwargs: Any) -> KbAgent:
@@ -205,15 +144,6 @@ def test_a_session_serialises_for_reports() -> None:
 # built, and this loop did not — so the best-performing path, the one a chat
 # would ship, ran with no safety filter from the day it was written until
 # 2026-08-23. Its non-diagnostic stance rested on a system prompt alone.
-
-
-def guardrail_blocked(text: str = "I can't help with that.") -> dict[str, Any]:
-    """A Converse response with the guardrail's own replacement text."""
-    return {
-        "stopReason": "guardrail_intervened",
-        "output": {"message": {"role": "assistant", "content": [{"text": text}]}},
-        "usage": {"inputTokens": 40, "outputTokens": 12},
-    }
 
 
 def test_no_guardrail_configured_sends_no_guardrail_config() -> None:
