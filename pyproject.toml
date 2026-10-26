@@ -19,7 +19,8 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["packages/core/tests"]
-# services/ are thin shells with no package of their own; their envelope tests
-# import them by file name (`import chat` is services/api/chat.py).
-pythonpath = ["services/api"]
+# services/ and scripts/ are thin shells with no package of their own; their
+# envelope tests import them by file name (`import chat` is services/api/chat.py,
+# `import chat_smoke` is scripts/chat_smoke.py).
+pythonpath = ["services/api", "scripts"]
 addopts = "-q"

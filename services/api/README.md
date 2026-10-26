@@ -72,7 +72,7 @@ purpose; use `aws apigateway get-api-key --api-key <chat_api_key_id> --include-v
 ## Smoke
 
 ```bash
-DOCPIPE_API_URL=… DOCPIPE_API_KEY=… uv run --with requests python scripts/chat_smoke.py
+DOCPIPE_API_URL=… DOCPIPE_API_KEY=… uv run python scripts/chat_smoke.py   # --json out.json
 ```
 
 Two turns on one synthetic `userId` (`smoke-[a-f0-9]{8}`, enforced — this repo
