@@ -69,3 +69,5 @@ class Conversation(BaseModel):
     messages: list[ChatMessage] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
+    # When DynamoDB may delete it (the table's TTL attribute). None until stored.
+    expires_at: datetime | None = None

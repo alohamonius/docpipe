@@ -2,6 +2,7 @@
 
 - models: Pydantic domain models (Job, JobStatus, SummaryResult, ChatMessage, ChatReply)
 - storage: S3 documents + DynamoDB job records
+- conversations: DynamoDB conversation history (PK userId, SK conversationId, TTL)
 - queue: SQS publish/consume
 - llm: Bedrock via the Converse API (DeepSeek default) — ChatClient + SummarizerClient
 - agent: the Converse tool loop — KbAgent drives search_kb over a Knowledge Base
@@ -9,6 +10,7 @@
 """
 
 from docpipe_core.agent import AgentSession, KbAgent, ToolCall
+from docpipe_core.conversations import ConversationStore
 from docpipe_core.graph import BodyGraph, GraphEdge, GraphHop, GraphNode, build_graph, expand
 from docpipe_core.kb_sync import (
     DEFAULT_MAX_DELETE_RATIO,
@@ -60,6 +62,7 @@ __all__ = [
     "ChatMessage",
     "ChatReply",
     "Conversation",
+    "ConversationStore",
     "CorpusSyncer",
     "DocumentStore",
     "IngestionOutcome",
