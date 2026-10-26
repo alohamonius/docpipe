@@ -6,10 +6,12 @@
 - queue: SQS publish/consume
 - llm: Bedrock via the Converse API (DeepSeek default) — ChatClient + SummarizerClient
 - agent: the Converse tool loop — KbAgent drives search_kb over a Knowledge Base
+- chat: ChatService — one POST /chat turn: history → KbAgent → persist → reply + citations
 - observability: structured logging + CloudWatch EMF metrics
 """
 
 from docpipe_core.agent import AgentSession, KbAgent, ToolCall
+from docpipe_core.chat import ChatRequest, ChatResponse, ChatService, Citation
 from docpipe_core.conversations import ConversationStore
 from docpipe_core.graph import BodyGraph, GraphEdge, GraphHop, GraphNode, build_graph, expand
 from docpipe_core.kb_sync import (
@@ -60,6 +62,10 @@ __all__ = [
     "BlastRadiusRefused",
     "ChatClient",
     "ChatMessage",
+    "ChatRequest",
+    "ChatResponse",
+    "ChatService",
+    "Citation",
     "ChatReply",
     "Conversation",
     "ConversationStore",

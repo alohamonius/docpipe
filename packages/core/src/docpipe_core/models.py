@@ -25,6 +25,10 @@ def new_job_id() -> str:
     return uuid.uuid4().hex
 
 
+def new_conversation_id() -> str:
+    return uuid.uuid4().hex
+
+
 class SummaryResult(BaseModel):
     summary: str
     model_id: str
@@ -64,7 +68,7 @@ class Job(BaseModel):
 
 
 class Conversation(BaseModel):
-    conversation_id: str = Field(default_factory=new_job_id)
+    conversation_id: str = Field(default_factory=new_conversation_id)
     user_id: str
     messages: list[ChatMessage] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)
