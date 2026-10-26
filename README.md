@@ -213,7 +213,7 @@ packages/core/     the library: models, storage, queue, Bedrock
                    tests can only import the installed package. All logic
                    lives here — nothing below is allowed to get clever.
 services/          the deployables: each dir ships as a unit. kb_sync (corpus
-                   sync CLI) today; api (Lambda) lands in Phase 3, worker
+                   sync CLI) and api (the POST /chat Lambda) today; worker
                    (SQS consumer) in Phase 5. Thin shells over core.
 scripts/           operator CLIs — run from a laptop, never deployed:
                    kb_eval, kb_agentic_eval, aurora_bootstrap, status,

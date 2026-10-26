@@ -1,4 +1,4 @@
-.PHONY: sync fmt lint typecheck test status kb-eval kb-agentic-eval kb-live-check infra-preview infra-up infra-down aurora-bootstrap playground graph-index
+.PHONY: sync fmt lint typecheck test status kb-eval kb-agentic-eval kb-live-check lambda-zip infra-preview infra-up infra-down aurora-bootstrap playground graph-index
 
 sync:
 	uv sync --all-packages
@@ -85,6 +85,32 @@ kb-live-check:
 #   PULUMI_CONFIG_PASSPHRASE=… make infra-up
 PULUMI_CONFIG_PASSPHRASE ?=
 export PULUMI_CONFIG_PASSPHRASE
+
+# The Lambda artifact for infra/components/api.py: docpipe_core + services/api/
+# chat.py + the LOCKED runtime deps — `uv export` from uv.lock, no dev group —
+# with wheels for Lambda's arm64 (aarch64-manylinux2014). pydantic-core is
+# compiled, so the host's wheels would not load there; the platform and the
+# Python version are asserted against the component's architectures/runtime by
+# test_lambda_packaging_contract.py. ~35 MB unpacked (cap 250). Gitignored
+# (build/, *.zip); `pulumi preview`/`up` with enableChatApi refuse to run
+# without it, naming this target.
+LAMBDA_BUILD := build/lambda
+LAMBDA_ZIP := build/lambda.zip
+LAMBDA_PLATFORM ?= aarch64-manylinux2014
+LAMBDA_PYTHON ?= 3.12
+lambda-zip:
+	rm -rf $(LAMBDA_BUILD) $(LAMBDA_ZIP)
+	mkdir -p $(LAMBDA_BUILD)
+	uv export --package docpipe-core --no-dev --no-hashes --no-emit-project --frozen \
+		> $(LAMBDA_BUILD).requirements.txt
+	uv pip install --quiet --target $(LAMBDA_BUILD) --python-platform $(LAMBDA_PLATFORM) \
+		--python-version $(LAMBDA_PYTHON) --only-binary :all: -r $(LAMBDA_BUILD).requirements.txt
+	cp -R packages/core/src/docpipe_core $(LAMBDA_BUILD)/docpipe_core
+	cp services/api/chat.py $(LAMBDA_BUILD)/chat.py
+	rm -rf $(LAMBDA_BUILD)/bin
+	find $(LAMBDA_BUILD) -name '__pycache__' -type d -prune -exec rm -rf {} +
+	cd $(LAMBDA_BUILD) && zip -qr ../lambda.zip .
+	@du -h $(LAMBDA_ZIP)
 
 infra-preview:
 	cd infra && pulumi preview --diff

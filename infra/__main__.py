@@ -5,9 +5,20 @@ old Terraform stack produced — see /.env.example). Run `pulumi stack output` t
 read them after `pulumi up`.
 """
 
+from pathlib import Path
+
 import pulumi
 import pulumi_aws as aws
-from components import AuroraKnowledgeBase, Data, Iam, KnowledgeBase, Messaging, Network, Safety
+from components import (
+    Api,
+    AuroraKnowledgeBase,
+    Data,
+    Iam,
+    KnowledgeBase,
+    Messaging,
+    Network,
+    Safety,
+)
 
 cfg = pulumi.Config()
 prefix = cfg.get("namePrefix") or "docpipe-dev"
@@ -17,6 +28,10 @@ prefix = cfg.get("namePrefix") or "docpipe-dev"
 # See components/data.py's docstring for the three-step sequence.
 enable_aurora = cfg.get_bool("enableAurora") or False
 enable_aurora_kb = cfg.get_bool("enableAuroraKb") or False
+# Phase 3's front door. Off by default because it ships an artifact: the api
+# component needs build/lambda.zip (`make lambda-zip`) to exist at preview time,
+# and a stack that does not want the API should not have to build it.
+enable_chat_api = cfg.get_bool("enableChatApi") or False
 # Two models, both DeepSeek (locked 2026-08-14, see PLAN.md). The summary model
 # is INFERENCE_PROFILE-only; the chat model is ON_DEMAND. They were one config
 # value, which meant the chat statement carried the summariser's profile ARN and
@@ -75,6 +90,30 @@ if enable_aurora_kb:
         database_name=data.aurora_database_name or "docpipe",
     )
 
+api: Api | None = None
+if enable_chat_api:
+    # Built by `make lambda-zip` (gitignored). Refuse early with the fix rather
+    # than let FileArchive fail mid-preview on a path nobody recognises.
+    lambda_zip = Path(__file__).resolve().parents[1] / "build" / "lambda.zip"
+    if not lambda_zip.is_file():
+        raise FileNotFoundError(
+            f"{lambda_zip} is missing — run `make lambda-zip` first; the api component ships it"
+        )
+    api = Api(
+        prefix,
+        role_arn=iam.lambda_role_arn,
+        code_path=str(lambda_zip),
+        # The names ChatService.from_env reads (packages/core/src/docpipe_core/chat.py);
+        # test_lambda_packaging_contract.py holds the two lists together.
+        environment={
+            "KNOWLEDGE_BASE_ID": kb.knowledge_base_id,
+            "CONVERSATIONS_TABLE": data.conversations_table,
+            "CHAT_MODEL_ID": chat_model_id,
+            "GUARDRAIL_ID": safety.guardrail_id,
+            "GUARDRAIL_VERSION": safety.guardrail_version,
+        },
+    )
+
 # --- exports → .env (see /.env.example) ---
 pulumi.export("documents_bucket", data.documents_bucket)
 pulumi.export("jobs_table", data.jobs_table)
@@ -104,3 +143,11 @@ if aurora_kb is not None:
     # the benchmark at the other store is this value, not a code change.
     pulumi.export("aurora_knowledge_base_id", aurora_kb.knowledge_base_id)
     pulumi.export("aurora_kb_data_source_id", aurora_kb.data_source_id)
+
+# --- the chat API (only when enabled; health.studio's DOCPIPE_API_URL) ---
+if api is not None:
+    pulumi.export("chat_api_url", api.chat_url)
+    # The key's ID, so the human can find it. Its VALUE is deliberately not an
+    # output: `aws apigateway get-api-key --api-key <id> --include-value`.
+    pulumi.export("chat_api_key_id", api.api_key_id)
+    pulumi.export("chat_function_name", api.function_name)

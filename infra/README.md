@@ -11,6 +11,7 @@ concern in `components/`, wired in `__main__.py`.
 | `kb`      | KB source bucket, **S3 Vectors** store, Bedrock Knowledge Base (Titan v2, 1024-dim pinned) |
 | `iam`     | API Lambda role + standalone worker policy (least-privilege) |
 | `safety`  | Bedrock guardrail (no diagnosis/prescription, PII-anonymize, grounding) + model invocation logging → S3/CloudWatch |
+| `api`     | **Phase 3's front door** (`enableChatApi`): Lambda (`chat.handler`, arm64, 29 s) + **REST** API Gateway `POST /chat` + usage plan (daily quota) + API key; exports `chat_api_url`, `chat_api_key_id` — never the key's value |
 
 ## Prerequisites
 
@@ -37,6 +38,7 @@ directory did not move it. Substitute your own AWS account id for
 ## Commands
 
 ```bash
+make lambda-zip                  # build/lambda.zip — the api component refuses to preview without it
 cd infra
 pulumi stack init dev            # first time only
 pulumi preview                   # dry run — VERIFY here first (see note below)
@@ -76,6 +78,7 @@ the cluster is opt-in by default and the dev stack has opted in.
 | `docpipe:enableAuroraKb` | `false` | **`true`** | attaches the second KB. Requires `enableAurora` **and** a prior `aurora_bootstrap.py` run — `__main__.py:63` raises on the first, nothing catches the second |
 | `docpipe:bedrockModelId` | `us.deepseek.r1-v1:0` | same | **summary** model (R1 — INFERENCE_PROFILE-only, no tool use) |
 | `docpipe:chatModelId` | `deepseek.v3.2` | same | **chat/agent** model (ON_DEMAND, tool use) |
+| `docpipe:enableChatApi` | `false` | **`true`** | the `api` component. Needs `build/lambda.zip` (`make lambda-zip`) at preview time; `__main__.py` refuses without it |
 
 ## Terraform, retired
 

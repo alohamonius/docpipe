@@ -128,9 +128,3 @@ def test_the_entrypoint_uses_the_cached_service(monkeypatch: pytest.MonkeyPatch)
     reply = chat.handler(event(json.dumps({"userId": USER, "message": "hi"})), None)
     assert reply["statusCode"] == 200
     assert len(service.requests) == 1
-
-
-def test_the_handler_is_the_name_the_function_is_configured_with() -> None:
-    """`chat.handler` is what infra/components/api.py tells Lambda to call."""
-    assert callable(chat.handler)
-    assert chat.__name__ == "chat"
