@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import random
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import boto3
@@ -47,6 +47,7 @@ from pydantic import BaseModel
 
 from docpipe_core.aws import is_retryable
 from docpipe_core.llm import HEALTH_ASSISTANT_SYSTEM, extract_answer_text
+from docpipe_core.models import ChatMessage
 from docpipe_core.retrieval import KnowledgeBaseClient, RetrievedPassage
 
 DEFAULT_AGENT_MODEL_ID = "deepseek.v3.2"  # ON_DEMAND + tool use; R1 has neither
@@ -306,9 +307,38 @@ class KbAgent:
             return "No passages found."
         return "\n\n".join(f"[{p.citation}]\n{p.text[:600]}" for p in passages)
 
-    def ask(self, question: str) -> AgentSession:
+    @staticmethod
+    def _history_messages(history: Sequence[ChatMessage]) -> list[dict[str, Any]]:
+        """Prior turns as plain Converse messages, replayed before the question.
+
+        Plain ``text`` blocks, never ``guardContent``: with a guardrail on, only
+        tagged content is input-assessed, and every prior user turn was assessed
+        when it was asked. Tagging them again would re-run the input policy over
+        the whole transcript on every turn — the toolResult problem of 2026-08-24
+        in a new coat.
+
+        Converse requires strictly alternating roles, and the new question is the
+        user turn — so the history must end on the assistant. The store writes
+        turns in (user, assistant) pairs, which keeps this true by construction;
+        the check is for everyone else.
+        """
+        if history and history[-1].role != "assistant":
+            raise ValueError(
+                "history must end with an assistant turn — the question is the next user turn"
+            )
+        return [{"role": m.role, "content": [{"text": m.content}]} for m in history]
+
+    def ask(self, question: str, *, history: Sequence[ChatMessage] = ()) -> AgentSession:
+        """One question, optionally after prior turns (``history``), driven to an answer.
+
+        ``history`` is what makes this a chat rather than a question box: the
+        Lambda behind ``POST /chat`` loads the conversation and replays it here.
+        The verbatim seed, when on, still searches the *question* — the history
+        is context for the model, not a query.
+        """
         messages: list[dict[str, Any]] = [
-            {"role": "user", "content": [self._question_block(question)]}
+            *self._history_messages(history),
+            {"role": "user", "content": [self._question_block(question)]},
         ]
         tool_calls: list[ToolCall] = []
         tokens_in = tokens_out = 0

@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 from botocore.exceptions import ClientError
 from docpipe_core.agent import AgentSession, KbAgent
+from docpipe_core.models import ChatMessage
 from docpipe_core.retrieval import KnowledgeBaseClient
 
 BUCKET = "s3://kb-source/"
@@ -359,3 +360,60 @@ def test_without_the_flag_no_seed_happens() -> None:
     assert kb_runtime.calls == []
     assert len(bedrock.calls[0]["messages"]) == 1
     assert "already been searched" not in bedrock.calls[0]["system"][0]["text"]
+
+
+# ── Prior turns ─────────────────────────────────────────────────────────────
+# The Lambda behind POST /chat replays the stored conversation before the new
+# question. The history is context, never a query, and never guard-tagged.
+
+
+def prior(*pairs: tuple[str, str]) -> list[ChatMessage]:
+    turns: list[ChatMessage] = []
+    for question, answer in pairs:
+        turns.append(ChatMessage(role="user", content=question))
+        turns.append(ChatMessage(role="assistant", content=answer))
+    return turns
+
+
+def test_prior_turns_precede_the_question_as_plain_text_even_with_a_guardrail() -> None:
+    bedrock = FakeBedrock([end_turn("Still the scalenes.")])
+    agent(bedrock, FakeKbRuntime([]), guardrail_id="gr-1").ask(
+        "and on the left?", history=prior(("neck?", "The scalenes."))
+    )
+
+    messages = bedrock.calls[0]["messages"]
+    assert messages[0] == {"role": "user", "content": [{"text": "neck?"}]}
+    assert messages[1] == {"role": "assistant", "content": [{"text": "The scalenes."}]}
+    # Only the new question carries the guardContent tag.
+    assert messages[2] == {
+        "role": "user",
+        "content": [{"guardContent": {"text": {"text": "and on the left?"}}}],
+    }
+    assert len(messages) == 3
+
+
+def test_history_must_end_on_the_assistant() -> None:
+    dangling = [ChatMessage(role="user", content="unanswered")]
+    with pytest.raises(ValueError, match="end with an assistant turn"):
+        agent(FakeBedrock([]), FakeKbRuntime([])).ask("q", history=dangling)
+
+
+def test_the_seed_searches_the_question_and_sits_after_the_history() -> None:
+    bedrock = FakeBedrock([end_turn("ok")])
+    kb_runtime = FakeKbRuntime([kb_result("p", "anatomy/x.md")])
+    session = agent(bedrock, kb_runtime, verbatim_first=True).ask(
+        "follow-up", history=prior(("first", "answered"))
+    )
+
+    assert session.tool_calls[0].query == "follow-up"  # not the history
+    messages = bedrock.calls[0]["messages"]
+    assert [m["role"] for m in messages] == ["user", "assistant", "user", "assistant", "user"]
+    assert messages[2]["content"] == [{"text": "follow-up"}]
+    assert "toolUse" in messages[3]["content"][0]
+    assert "toolResult" in messages[4]["content"][0]
+
+
+def test_without_history_nothing_changes() -> None:
+    bedrock = FakeBedrock([end_turn("ok")])
+    agent(bedrock, FakeKbRuntime([])).ask("q")
+    assert bedrock.calls[0]["messages"] == [{"role": "user", "content": [{"text": "q"}]}]
